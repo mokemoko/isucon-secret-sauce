@@ -22,5 +22,8 @@ alp: FORCE
 ltsv: FORCE
 	cat /var/log/nginx/access.log | lltsv -k time,status,reqtime,uri -K
 
+pprof: FORCE
+	go tool pprof -http="0.0.0.0:8081" http://localhost:5000/debug/pprof/profile
+
 FORCE:
 .PHONY: FORCE

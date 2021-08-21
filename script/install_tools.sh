@@ -24,7 +24,7 @@ apt install -y python-mysqldb
 curl -LO https://www.percona.com/downloads/percona-toolkit/3.3.1/binary/debian/bionic/x86_64/percona-toolkit_3.3.1-1.bionic_amd64.deb
 dpkg -i percona-toolkit_3.3.1-1.bionic_amd64.deb
 apt --fix-broken install
-rm percona-toolkit_3.3.3-1.bionic_amd64.deb
+rm percona-toolkit_3.3.1-1.bionic_amd64.deb
 
 # notify_slack
 curl -L https://github.com/catatsuy/notify_slack/releases/download/v0.4.4/notify_slack-linux-amd64.tar.gz \

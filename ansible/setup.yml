@@ -2,6 +2,17 @@
   become: yes
   become_user: isucon
   tasks:
+    - name: mkdir .ssh
+      file:
+        path: /home/isucon/.ssh
+        state: directory
+        mode: 0700
+    - name: put deploy key
+      copy:
+        src: files/deploy_key
+        dest: /home/isucon/id_rsa
+        mode: 0600
+        force: false
     - name: copy .gitconfig
       copy:
         src: files/.gitconfig

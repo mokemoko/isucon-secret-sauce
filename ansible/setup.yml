@@ -1,0 +1,42 @@
+- hosts: all
+  become: yes
+  become_user: isucon
+  tasks:
+    - name: copy .gitconfig
+      copy:
+        src: files/.gitconfig
+        dest: /home/isucon/
+        force: false
+    - name: copy alp.yml
+      copy:
+        src: ../config/alp.yml
+        dest: /home/isucon/
+        force: false
+    - name: copy notify_slack.toml
+      copy:
+        src: ../config/notify_slack.toml
+        dest: /home/isucon/
+        force: false
+    - name: copy out.sh
+      copy:
+        src: ../script/out.sh
+        dest: /home/isucon/
+        force: false
+    - name: copy Makefile
+      copy:
+        src: ../script/Makefile
+        dest: /home/isucon/
+        force: false
+    - name: add lines .bash_profile
+      blockinfile:
+        dest: /home/isucon/.bash_profile
+        content: |
+          alias g = git
+          alias v = vim
+          alias screen = "screen -U -D -RR"
+    - name: install packages
+      become_user: root
+      package:
+        name:
+          - screen
+          - htop

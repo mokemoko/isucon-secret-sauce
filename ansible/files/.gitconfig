@@ -1,0 +1,9 @@
+[alias]
+  ci = commit
+  co = checkout
+  st = "status -sb"
+  b = branch
+  f = fetch
+[user]
+  name = mokemoko
+  email = mokemoko331@gmail.com

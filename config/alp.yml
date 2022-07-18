@@ -4,8 +4,8 @@ sort: sum
 reverse: true
 show_footers: true
 matching_groups:
-  - "/upload/*"
-  - "/static/*"
+  - "^/users/[0-9]+$"
+  - "^/static/"
 output: "count,1xx,2xx,3xx,4xx,5xx,method,uri,min,max,sum,avg,sum_body,avg_body"
 ltsv:
   apptime_label:  apptime

@@ -42,12 +42,27 @@
       blockinfile:
         dest: /home/isucon/.bash_profile
         content: |
-          alias g = git
-          alias v = vim
-          alias screen = "screen -U -D -RR"
+          alias g=git
+          alias v=vim
+          alias screen="screen -U -D -RR"
     - name: install packages
       become_user: root
       package:
         name:
           - screen
           - htop
+          - unzip
+    - name: install alp
+      become_user: root
+      block:
+        - name: check alp
+          stat:
+            path: /usr/local/bin/alp
+          register: result
+        - shell:
+            cmd: |
+              curl -LO https://github.com/tkuchiki/alp/releases/download/v1.0.7/alp_linux_amd64.zip
+              unzip alp_linux_amd64.zip -d /usr/local/bin/
+              rm alp_linux_amd64.zip
+            chdir: /tmp
+          when: "result.stat.exists == false"

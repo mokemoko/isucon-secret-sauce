@@ -10,7 +10,7 @@
     - name: put deploy key
       copy:
         src: files/deploy_key
-        dest: /home/isucon/id_rsa
+        dest: /home/isucon/.ssh/id_rsa
         mode: 0600
         force: false
     - name: copy .gitconfig
@@ -38,6 +38,11 @@
         src: ../script/Makefile
         dest: /home/isucon/
         force: false
+    - name: copy service-account.json
+      copy:
+        src: files/service-account.json
+        dest: /home/isucon/
+        force: false
     - name: add lines .bash_profile
       blockinfile:
         dest: /home/isucon/.bash_profile
@@ -52,14 +57,15 @@
           - screen
           - htop
           - unzip
-    - name: install alp
+    - name: alp
       become_user: root
       block:
         - name: check alp
           stat:
             path: /usr/local/bin/alp
           register: result
-        - shell:
+        - name: install alp
+          shell:
             cmd: |
               curl -LO https://github.com/tkuchiki/alp/releases/download/v1.0.7/alp_linux_amd64.zip
               unzip alp_linux_amd64.zip -d /usr/local/bin/

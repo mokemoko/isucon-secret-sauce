@@ -45,7 +45,7 @@
         force: false
     - name: add lines .bash_profile
       blockinfile:
-        dest: /home/isucon/.bash_profile
+        dest: /home/isucon/.bashrc
         content: |
           alias g=git
           alias v=vim
@@ -71,4 +71,30 @@
               unzip alp_linux_amd64.zip -d /usr/local/bin/
               rm alp_linux_amd64.zip
             chdir: /tmp
+          when: "result.stat.exists == false"
+    - name: pt
+      become_user: root
+      block:
+        - name: check pt
+          stat:
+            path: /usr/bin/pt-query-digest
+          register: result
+        - name: install pt
+          shell:
+            cmd: |
+              curl -LO https://www.percona.com/downloads/percona-toolkit/3.3.1/binary/debian/bionic/x86_64/percona-toolkit_3.3.1-1.bionic_amd64.deb
+              apt install -y percona-toolkit_3.3.1-1.bionic_amd64.deb
+              rm percona-toolkit_3.3.1-1.bionic_amd64.deb
+            chdir: /tmp
+          when: "result.stat.exists == false and ansible_facts['os_family'] == 'Debian'"
+    - name: notify_slack
+      become_user: root
+      block:
+        - name: check notify_slack
+          stat:
+            path: /usr/local/bin/notify_slack
+          register: result
+        - name: install notify_slack
+          shell:
+            cmd: "curl -L https://github.com/catatsuy/notify_slack/releases/download/v0.4.4/notify_slack-linux-amd64.tar.gz | tar xz -C /usr/local/bin/"
           when: "result.stat.exists == false"

@@ -13,7 +13,7 @@ func initProfiler() {
 	if err := profiler.Start(profiler.Config{
 		Service:        "isucon",
 		ServiceVersion: "1.0.0",
-		ProjectID:      "isucon",
+		ProjectID:      "isucon9-final",
 	}); err != nil {
 		log.Fatal(err)
 	}

@@ -1,6 +1,6 @@
 # https://github.com/catatsuy/notify_slack
 [slack]
-url = "INCOMING_WEBHOOK_URL"
+url = "https://hooks.slack.com/services/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"
 token = "SLACK_TOKEN"
 channel = "#isucon-notify"
 username = "notify"

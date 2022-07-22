@@ -1,4 +1,6 @@
 # ベンチマーク実行後にalp,pt-query-digestの結果をhtmlに吐いてslack通知するスクリプト
+NGINX_PUBLIC_DIR=/home/isucon/webapp/frontend/dist/
+BASE_URL=http://35.78.223.225/
 filename="$(date '+%Y.%m.%d_%H:%M:%S').html"
 target_path="${NGINX_PUBLIC_DIR}${filename}"
 echo "<html><body><pre style=\"font-family: 'Courier New', Consolas, monospace;\">" >> "$target_path"

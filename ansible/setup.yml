@@ -2,17 +2,31 @@
   become: yes
   become_user: isucon
   tasks:
-    - name: mkdir .ssh
-      file:
-        path: /home/isucon/.ssh
-        state: directory
-        mode: 0700
-    - name: put deploy key
-      copy:
-        src: files/deploy_key
-        dest: /home/isucon/.ssh/id_rsa
-        mode: 0600
-        force: false
+    - name: ssh key
+      block:
+        - name: mkdir ~/.ssh
+          file:
+            path: /home/isucon/.ssh
+            state: directory
+            mode: 0700
+        - name: put deploy key
+          copy:
+            src: files/deploy_key
+            dest: /home/isucon/.ssh/id_rsa
+            mode: 0600
+            force: false
+    - name: htop
+      block:
+        - name: mkdir ~/.config/htop
+          file:
+            path: /home/isucon/.config/htop
+            state: directory
+            mode: 0700
+        - name: copy htoprc
+          copy:
+            src: ../config/htoprc
+            dest: /home/isucon/.config/htop/
+            force: false
     - name: copy .gitconfig
       copy:
         src: files/.gitconfig

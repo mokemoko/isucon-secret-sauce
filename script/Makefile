@@ -5,7 +5,7 @@ initialize: FORCE
 	curl -XPOST http://127.0.0.1:8000/initialize -H 'Content-Type: application/json' -d @initialize.json
 
 rotate: FORCE
-	sudo logrotate -f /etc/logrotate.d/mysql-slow
+	sudo logrotate -f /etc/logrotate.d/mysql-server
 	sudo logrotate -f /etc/logrotate.d/nginx
 
 restart: FORCE

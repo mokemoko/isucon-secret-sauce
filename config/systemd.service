@@ -1,0 +1,14 @@
+[Unit]
+After=network.target
+
+[Install]
+WantedBy=multi-user.target
+
+[Service]
+Type=simple
+User=isucon
+Group=isucon
+WorkingDirectory=/home/isucon/webapp/go
+EnvironmentFile=/home/isucon/webapp/env
+ExecStart=/home/isucon/webapp/go/main
+Restart=always

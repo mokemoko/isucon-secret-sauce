@@ -12,25 +12,26 @@
       border-bottom: 1px dashed black;
       padding-bottom: 5px;
       margin-bottom: 5px;
-        width: 60000px;
+      width: 60000px;
     }
     .bar {
       position: absolute;
       background-color: gray;
+      height: 5px;
     }
     .bar:last-child::after {
-        background-color: red;
+      background-color: red;
     }
     .bar:hover::after {
-        content: attr(data-path);
-        position: absolute;
-        pointer-events: none;
-        top: -20px;
-        padding: 1px;
-        font-size: small;
-        color: white;
-        background-color: navy;
-        white-space: nowrap;
+      content: attr(data-path);
+      position: absolute;
+      pointer-events: none;
+      top: -20px;
+      padding: 1px;
+      font-size: small;
+      color: white;
+      background-color: navy;
+      white-space: nowrap;
     }
   </style>
 </head>
@@ -49,7 +50,6 @@
           bar.style.top = `${i * 6}px`
           bar.style.left = `${v.start}px`
           bar.style.width = `${v.end - v.start}px`
-          bar.style.height = "5px"
           bar.dataset.path = v.path
           p.appendChild(bar)
         })

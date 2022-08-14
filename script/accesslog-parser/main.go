@@ -22,8 +22,10 @@ type AccessLog struct {
 }
 
 type ExportData struct {
-	Key  string      `json:"key"`
-	Data []ExportRow `json:"data"`
+	Key   string      `json:"key"`
+	Start int         `json:"start"`
+	End   int         `json:"end"`
+	Data  []ExportRow `json:"data"`
 }
 
 type ExportRow struct {
@@ -65,16 +67,26 @@ func convertData(data []AccessLog) []ExportData {
 	tmp := map[string]*ExportData{}
 	initTime := int((data[0].Msec - data[0].ReqTime) * 1000)
 	for _, l := range data {
+		start := int((l.Msec-l.ReqTime)*1000) - initTime
+		end := int(l.Msec*1000) - initTime
 		if _, ok := tmp[l.Cookie]; !ok {
 			tmp[l.Cookie] = &ExportData{
-				Key: l.Cookie,
+				Key:   l.Cookie,
+				Start: start,
+				End:   end,
 			}
 		}
 		tmp[l.Cookie].Data = append(tmp[l.Cookie].Data, ExportRow{
 			Path:  l.Req,
-			Start: int((l.Msec-l.ReqTime)*1000) - initTime,
-			End:   int(l.Msec*1000) - initTime,
+			Start: start,
+			End:   end,
 		})
+		if tmp[l.Cookie].Start > start {
+			tmp[l.Cookie].Start = start
+		}
+		if tmp[l.Cookie].End < end {
+			tmp[l.Cookie].End = end
+		}
 	}
 	var res []ExportData
 	for _, v := range tmp {

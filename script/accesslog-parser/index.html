@@ -5,14 +5,13 @@
   <title>アクセスログ時系列分析</title>
   <style>
     #content {
-      padding: 24px;
+      position: relative;
+      margin: 24px;
     }
     .user {
-      position: relative;
-      border-bottom: 1px dashed black;
-      padding-bottom: 5px;
-      margin-bottom: 5px;
-      width: 60000px;
+      position: absolute;
+      outline: 1px dashed black;
+      outline-offset: 2px;
     }
     .bar {
       position: absolute;
@@ -39,16 +38,23 @@
   <div id="content"></div>
   <script>
     (async () => {
+      const USER_MARGIN = 2;
+      const BAR_HEIGHT = 5;
       const data = await (await fetch("./out.json")).json()
+      let dy = 0
       data.forEach(user => {
         const p = document.createElement("div")
         p.className = "user"
-        p.style.height = `${user.data.length * 6}px`
+        p.style.top = `${dy}px`
+        p.style.left = `${user.start}px`
+        p.style.width = `${user.end - user.start}px`
+        p.style.height = `${user.data.length * (BAR_HEIGHT + 1) - 1}px`
+        dy += user.data.length * (BAR_HEIGHT + 1) - 1 + USER_MARGIN * 4
         user.data.forEach((v, i) => {
           const bar = document.createElement("div")
           bar.className = "bar"
           bar.style.top = `${i * 6}px`
-          bar.style.left = `${v.start}px`
+          bar.style.left = `${v.start - user.start}px`
           bar.style.width = `${v.end - v.start}px`
           bar.dataset.path = v.path
           p.appendChild(bar)

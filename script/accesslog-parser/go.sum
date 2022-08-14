@@ -1,0 +1,5 @@
+github.com/Songmu/go-ltsv v0.1.0 h1:veR1K9TBM0PiGpxKobcJg78uiZw/FPlStpgnCHe+4tQ=
+github.com/Songmu/go-ltsv v0.1.0/go.mod h1:s3gHTN5/CPDucnCAJxoFg35cXGk+X/b04pg627Kksi0=
+github.com/kr/pretty v0.3.0 h1:WgNl7dwNpEZ6jJ9k1snq4pZsg7DOEN8hP9Xw0Tsjwk0=
+github.com/kr/text v0.2.0 h1:5Nx0Ya0ZqY2ygV366QzturHI13Jq95ApcVaJBhpS+AY=
+github.com/rogpeppe/go-internal v1.6.1 h1:/FiVV8dS/e+YqF2JvO3yXRFbBLTIuSDkuC7aBOAvL+k=

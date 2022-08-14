@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>アクセスログ時系列分析</title>
+  <style>
+    #content {
+      padding: 24px;
+    }
+    .user {
+      position: relative;
+      border-bottom: 1px dashed black;
+      padding-bottom: 5px;
+      margin-bottom: 5px;
+        width: 60000px;
+    }
+    .bar {
+      position: absolute;
+      background-color: gray;
+    }
+    .bar:last-child::after {
+        background-color: red;
+    }
+    .bar:hover::after {
+        content: attr(data-path);
+        position: absolute;
+        pointer-events: none;
+        top: -20px;
+        padding: 1px;
+        font-size: small;
+        color: white;
+        background-color: navy;
+        white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+  <div id="content"></div>
+  <script>
+    (async () => {
+      const data = await (await fetch("./out.json")).json()
+      data.forEach(user => {
+        const p = document.createElement("div")
+        p.className = "user"
+        p.style.height = `${user.data.length * 6}px`
+        user.data.forEach((v, i) => {
+          const bar = document.createElement("div")
+          bar.className = "bar"
+          bar.style.top = `${i * 6}px`
+          bar.style.left = `${v.start}px`
+          bar.style.width = `${v.end - v.start}px`
+          bar.style.height = "5px"
+          bar.dataset.path = v.path
+          p.appendChild(bar)
+        })
+        document.querySelector("#content").appendChild(p)
+      })
+    })()
+  </script>
+</body>
+</html>

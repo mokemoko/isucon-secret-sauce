@@ -5,8 +5,11 @@
   <title>アクセスログ時系列分析</title>
   <style>
     #content {
-      position: relative;
       margin: 24px;
+    }
+    #body {
+      position: relative;
+      transform-origin: 0 0;
     }
     .user {
       position: absolute;
@@ -17,9 +20,6 @@
       position: absolute;
       background-color: gray;
       height: 5px;
-    }
-    .bar:last-child::after {
-      background-color: red;
     }
     .bar:hover::after {
       content: attr(data-path);
@@ -35,9 +35,21 @@
   </style>
 </head>
 <body>
-  <div id="content"></div>
+  <div id="content">
+    <div id="header">
+      <input id="scale" type="range" min="0" max="100" step="1" />
+    </div>
+    <div id="body"></div>
+  </div>
   <script>
-    (async () => {
+    const onScaleChange = (e) => {
+      const value = e.target.value
+      const rules = document.styleSheets[0].cssRules
+      const userStyle = [...Array(rules.length)].map((_, i) => rules[i]).find(rule => rule.selectorText === "#body")
+      userStyle.style.transform = `scaleX(${value/50})`
+    }
+    document.querySelector("#scale").addEventListener('change', onScaleChange)
+    ;(async () => {
       const USER_MARGIN = 2;
       const BAR_HEIGHT = 5;
       const data = await (await fetch("./out.json")).json()
@@ -47,7 +59,7 @@
         p.className = "user"
         p.style.top = `${dy}px`
         p.style.left = `${user.start}px`
-        p.style.width = `${user.end - user.start}px`
+        p.style.width = `${user.end - user.start + 1}px`
         p.style.height = `${user.data.length * (BAR_HEIGHT + 1) - 1}px`
         dy += user.data.length * (BAR_HEIGHT + 1) - 1 + USER_MARGIN * 4
         user.data.forEach((v, i) => {
@@ -55,11 +67,11 @@
           bar.className = "bar"
           bar.style.top = `${i * 6}px`
           bar.style.left = `${v.start - user.start}px`
-          bar.style.width = `${v.end - v.start}px`
+          bar.style.width = `${v.end - v.start + 1}px`
           bar.dataset.path = v.path
           p.appendChild(bar)
         })
-        document.querySelector("#content").appendChild(p)
+        document.querySelector("#body").appendChild(p)
       })
     })()
   </script>

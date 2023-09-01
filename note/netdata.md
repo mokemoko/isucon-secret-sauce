@@ -3,6 +3,13 @@
 bash <(curl -Ss https://my-netdata.io/kickstart.sh)
 ```
 
+### 待ち受けポートを変える場合
+`/etc/netdata/netdata.conf`
+```
+[global]
+  default port = 8080
+```
+
 ## use mysql plugin
 read: https://learn.netdata.cloud/docs/data-collection/database-servers/mysql-and-mariadb#setup
 

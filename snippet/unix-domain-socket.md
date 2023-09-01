@@ -1,3 +1,5 @@
+### for nginx
+
 #### app.go
 ```go
 listener, err := net.Listen("unix", "/var/run/isucon/go.sock")
@@ -12,6 +14,10 @@ defer func() {
 if err := http.Serve(listener, r); err != nil {
   log.Fatalf("error: %v", err)
 }
+
+// echo
+e = echo.New()
+e.Listener = listener
 ```
 
 #### nginx.conf
@@ -23,4 +29,15 @@ http {
        server unix:/var/run/isucon/go.sock;
     }
 }
+```
+
+### for mysql
+
+#### app.go
+```go
+mysql.Config{
+		Net:                  "unix",
+		Addr:                 "/var/run/mysqld/mysqld.sock",
+		...
+	})
 ```

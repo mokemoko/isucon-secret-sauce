@@ -20,3 +20,15 @@ timestampの逆順カラムを作成
 ```mysql
 ALTER TABLE table_name ADD COLUMN column_name BIGINT GENERATED ALWAYS AS (-CAST(timestamp AS SIGNED)) STORED
 ```
+
+## リモート接続用設定
+```
+# mysqld.conf
+bind-address = 0.0.0.0
+```
+
+```
+CREATE USER 'isucon'@'%' IDENTIFIED BY 'isucon';
+GRANT ALL on *.* TO 'isucon'@'%';
+FLUSH PRIVILEGES;
+```

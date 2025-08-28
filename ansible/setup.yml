@@ -81,7 +81,7 @@
         - name: install alp
           shell:
             cmd: |
-              curl -LO https://github.com/tkuchiki/alp/releases/download/v1.0.7/alp_linux_amd64.zip
+              curl -LO https://github.com/tkuchiki/alp/releases/download/v1.0.21/alp_linux_amd64.zip
               unzip alp_linux_amd64.zip -d /usr/local/bin/
               rm alp_linux_amd64.zip
             chdir: /tmp

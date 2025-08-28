@@ -18,7 +18,7 @@ pt: FORCE
 	sudo pt-query-digest /var/log/mysql/slow.log
 
 alp: FORCE
-	sudo alp ltsv -c alp.yml
+	sudo alp ltsv --config alp.yml
 
 ltsv: FORCE
 	sudo cat /var/log/nginx/access.log | lltsv -k time,status,reqtime,uri -K

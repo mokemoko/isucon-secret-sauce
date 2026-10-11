@@ -1,0 +1,161 @@
+// ISUCON 自律チューニングのダッシュボード。
+// state/ (bench.jsonl, analysis/, phase) と Orca orchestration の状態を読み、人間の示唆・ゲート回答を Orca に流す。
+// 問題情報を外に出さないため、必ず 127.0.0.1 か Tailscale のアドレスで待ち受けること。
+// 起動: cd dashboard && go run . -run <run_id> -end 2026-10-31T18:00:00+09:00 [-addr <tailscale-ip>:8080]
+package main
+
+import (
+	"bufio"
+	"context"
+	_ "embed"
+	"encoding/json"
+	"flag"
+	"log"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
+)
+
+//go:embed index.html
+var indexHTML []byte
+
+var (
+	addr     = flag.String("addr", "127.0.0.1:8080", "listen address (localhost か Tailscale IP のみ)")
+	stateDir = flag.String("state", "../state", "bench lane の state ディレクトリ")
+	runID    = flag.String("run", "", "Orca orchestration Run id (Coordinator の run-create 結果)")
+	endAt    = flag.String("end", "", "競技終了時刻 RFC3339 (例 2026-10-31T18:00:00+09:00)")
+	orcaBin  = flag.String("orca", "orca", "orca CLI")
+)
+
+func orca(args ...string) (json.RawMessage, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, *orcaBin, append(args, "--json")...).Output()
+	if err != nil {
+		return nil, err
+	}
+	var env struct {
+		Result json.RawMessage `json:"result"`
+	}
+	if err := json.Unmarshal(out, &env); err != nil {
+		return nil, err
+	}
+	return env.Result, nil
+}
+
+func readBench() []json.RawMessage {
+	rows := []json.RawMessage{}
+	f, err := os.Open(filepath.Join(*stateDir, "bench.jsonl"))
+	if err != nil {
+		return rows
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(nil, 1<<20)
+	for sc.Scan() {
+		if json.Valid(sc.Bytes()) {
+			rows = append(rows, append(json.RawMessage{}, sc.Bytes()...))
+		}
+	}
+	return rows
+}
+
+// ponytail: リクエスト毎に orca CLI を叩く。閲覧者3人×3秒ポーリングなら十分、重ければ数秒キャッシュを足す
+func handleState(w http.ResponseWriter, r *http.Request) {
+	res := map[string]any{"run": *runID, "end": *endAt, "errors": []string{}}
+	errs := []string{}
+	phase, _ := os.ReadFile(filepath.Join(*stateDir, "phase"))
+	res["phase"] = strings.TrimSpace(string(phase))
+	bench := readBench()
+	res["bench"] = bench
+
+	if len(bench) > 0 {
+		var last struct{ ID string }
+		json.Unmarshal(bench[len(bench)-1], &last)
+		files, _ := filepath.Glob(filepath.Join(*stateDir, "analysis", last.ID, "*", "*"))
+		for i, f := range files {
+			files[i], _ = filepath.Rel(*stateDir, f)
+		}
+		res["analysis"] = map[string]any{"id": last.ID, "files": files}
+	}
+
+	if *runID != "" {
+		for key, args := range map[string][]string{
+			"tasks": {"orchestration", "task-list", "--run", *runID},
+			"gates": {"orchestration", "gate-list", "--run", *runID, "--status", "pending"},
+		} {
+			raw, err := orca(args...)
+			if err != nil {
+				errs = append(errs, key+": "+err.Error())
+				continue
+			}
+			var m map[string]json.RawMessage
+			json.Unmarshal(raw, &m)
+			res[key] = m[key]
+		}
+	} else {
+		errs = append(errs, "-run 未指定: タスク・ゲートは表示されません")
+	}
+	res["errors"] = errs
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(res)
+}
+
+// post は JSON 限定にして、他サイトからのフォーム POST (CSRF) を CORS プリフライトで弾く
+func post(fn func(body map[string]string) ([]string, error)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.Header.Get("Content-Type") != "application/json" {
+			http.Error(w, "POST application/json only", http.StatusBadRequest)
+			return
+		}
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		args, err := fn(body)
+		if err == nil {
+			_, err = orca(args...)
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func main() {
+	flag.Parse()
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(indexHTML)
+	})
+	http.HandleFunc("/api/state", handleState)
+	// 人間の示唆は status/high として Coordinator の Run inbox に入れる。escalation は Dispatch 外から送れないため。
+	// Coordinator は check --wait --types に status を含めること
+	http.HandleFunc("/api/hint", post(func(b map[string]string) ([]string, error) {
+		text := strings.TrimSpace(b["text"])
+		if text == "" || *runID == "" {
+			return nil, errBad("text と -run が必要です")
+		}
+		return []string{"orchestration", "send", "--to", "run:" + *runID, "--type", "status", "--priority", "high",
+			"--subject", "[human] " + b["who"], "--body", text}, nil
+	}))
+	http.HandleFunc("/api/gate", post(func(b map[string]string) ([]string, error) {
+		if b["id"] == "" || b["resolution"] == "" {
+			return nil, errBad("id と resolution が必要です")
+		}
+		return []string{"orchestration", "gate-resolve", "--id", b["id"], "--resolution", b["resolution"]}, nil
+	}))
+	http.Handle("/state/", http.StripPrefix("/state/", http.FileServer(http.Dir(*stateDir))))
+	log.Printf("dashboard on http://%s (run=%q state=%s)", *addr, *runID, *stateDir)
+	log.Fatal(http.ListenAndServe(*addr, nil))
+}
+
+type errBad string
+
+func (e errBad) Error() string { return string(e) }

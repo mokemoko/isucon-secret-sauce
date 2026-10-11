@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ISUCON Control</title>
+<style>
+:root {
+  --surface-0: #f4f4f2; --surface-1: #fcfcfb; --border: #e2e1dc;
+  --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #8a8984;
+  --series-1: #2a78d6; --good: #0ca30c; --warning: #fab219; --critical: #d03b3b;
+  --accent-bg: #eef4fc;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --surface-0: #111110; --surface-1: #1a1a19; --border: #33332f;
+    --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+    --series-1: #3987e5; --accent-bg: #1c2633;
+  }
+}
+:root[data-theme="dark"] {
+  --surface-0: #111110; --surface-1: #1a1a19; --border: #33332f;
+  --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+  --series-1: #3987e5; --accent-bg: #1c2633;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--surface-0); color: var(--text-primary);
+  font: 14px/1.5 system-ui, -apple-system, "Hiragino Sans", sans-serif; }
+header { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: baseline; padding: 12px 16px;
+  border-bottom: 1px solid var(--border); background: var(--surface-1); position: sticky; top: 0; z-index: 1; }
+header h1 { font-size: 16px; margin: 0; }
+.kpi { display: flex; flex-direction: column; }
+.kpi b { font-size: 22px; font-variant-numeric: tabular-nums; }
+.kpi span { font-size: 12px; color: var(--text-secondary); }
+main { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; padding: 16px; }
+@media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); } }
+section { background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; min-width: 0; }
+section h2 { font-size: 13px; margin: 0 0 8px; color: var(--text-secondary); font-weight: 600; }
+.col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th { color: var(--text-secondary); font-weight: 500; font-size: 12px; }
+td.num, th.num { text-align: right; }
+.scroll { overflow-x: auto; }
+.ok::before { content: "✓ "; color: var(--good); }
+.ng::before { content: "✕ "; color: var(--critical); }
+.muted { color: var(--text-muted); }
+.tag { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 4px; border: 1px solid var(--border); color: var(--text-secondary); }
+.tag.restart { border-color: var(--warning); }
+.tag.restart::before { content: "⟳ "; }
+.errors { background: var(--accent-bg); padding: 8px 16px; color: var(--text-primary); }
+.errors:empty { display: none; }
+pre { margin: 0; font-size: 12px; overflow-x: auto; max-height: 360px; background: var(--surface-0); padding: 8px; border-radius: 4px; }
+textarea, input, select, button { font: inherit; color: inherit; }
+textarea, input, select { width: 100%; background: var(--surface-0); border: 1px solid var(--border); border-radius: 4px; padding: 6px; }
+button { background: var(--series-1); color: #fff; border: 0; border-radius: 4px; padding: 6px 12px; cursor: pointer; }
+button.secondary { background: transparent; color: var(--text-primary); border: 1px solid var(--border); }
+.gate { border-left: 3px solid var(--warning); padding: 4px 0 8px 10px; margin-bottom: 8px; }
+.gate .opts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.tasks { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.tasks ul { list-style: none; margin: 0; padding: 0; }
+.tasks li { padding: 4px 0; border-bottom: 1px solid var(--border); font-size: 13px; overflow-wrap: anywhere; }
+#chart { width: 100%; height: 220px; display: block; }
+#chart .grid { stroke: var(--border); stroke-width: 1; }
+#chart text { fill: var(--text-muted); font-size: 11px; }
+#tip { position: fixed; pointer-events: none; background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: 4px; padding: 6px 8px; font-size: 12px; display: none; box-shadow: 0 2px 8px rgb(0 0 0 / .15); z-index: 2; }
+a { color: var(--series-1); }
+</style>
+</head>
+<body>
+<header>
+  <h1>ISUCON Control</h1>
+  <div class="kpi"><b id="phase">-</b><span>フェーズ</span></div>
+  <div class="kpi"><b id="remain">-</b><span>残り時間</span></div>
+  <div class="kpi"><b id="cur">-</b><span>最新スコア</span></div>
+  <div class="kpi"><b id="best">-</b><span>ベスト</span></div>
+  <div class="kpi"><b id="nbench">-</b><span>ベンチ回数</span></div>
+</header>
+<div class="errors" id="errors"></div>
+<main>
+  <div class="col">
+    <section>
+      <h2>スコア推移（✕ = fail）</h2>
+      <svg id="chart" role="img" aria-label="ベンチスコア推移"></svg>
+    </section>
+    <section>
+      <h2>ベンチ履歴（新しい順）</h2>
+      <div class="scroll"><table id="bench"></table></div>
+    </section>
+    <section>
+      <h2>タスク</h2>
+      <div class="tasks" id="tasks"></div>
+    </section>
+    <section>
+      <h2>最新解析 <span class="muted" id="aid"></span></h2>
+      <div id="files"></div>
+      <div id="previews"></div>
+    </section>
+  </div>
+  <div class="col">
+    <section>
+      <h2>人間の判断待ち</h2>
+      <div id="gates"></div>
+    </section>
+    <section>
+      <h2>示唆・指示を送る</h2>
+      <form id="hint">
+        <input id="who" placeholder="名前" style="margin-bottom:6px">
+        <textarea id="text" rows="5" placeholder="例: /api/xxx の N+1 を優先して。users テーブルに index が無い"></textarea>
+        <div style="margin-top:6px;display:flex;gap:8px;align-items:center">
+          <button>送信</button><span id="hintmsg" class="muted"></span>
+        </div>
+      </form>
+    </section>
+  </div>
+</main>
+<div id="tip"></div>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt = n => n == null || isNaN(n) ? "-" : Number(n).toLocaleString();
+const pct = n => n == null || isNaN(n) ? "-" : (n > 0 ? "+" : "") + n.toFixed(1) + "%";
+let state = null;
+
+try { $("who").value = localStorage.getItem("who") || ""; } catch {}
+
+// 各ベンチに「直前の pass ベンチ比の実績改善率」と、予測とのギャップを付ける
+function enrich(rows) {
+  let prev = null;
+  return rows.map(r => {
+    const actual = r.pass && prev ? (r.score - prev) / prev * 100 : null;
+    const gap = actual != null && r.predicted != null ? actual - r.predicted : null;
+    if (r.pass) prev = r.score;
+    return { ...r, actual, gap };
+  });
+}
+
+function renderChart(rows) {
+  const svg = $("chart"), W = svg.clientWidth || 600, H = 220, L = 56, R = 12, T = 12, B = 24;
+  if (!rows.length) { svg.innerHTML = `<text x="${L}" y="${H/2}">まだベンチ結果がありません</text>`; return; }
+  const max = Math.max(1, ...rows.map(r => r.score || 0)) * 1.1;
+  const x = i => L + (rows.length === 1 ? (W - L - R) / 2 : i * (W - L - R) / (rows.length - 1));
+  const y = v => T + (H - T - B) * (1 - v / max);
+  let g = "";
+  for (let k = 0; k <= 4; k++) {
+    const v = max * k / 4;
+    g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${fmt(Math.round(v))}</text>`;
+  }
+  const pass = rows.map((r, i) => [i, r]).filter(([, r]) => r.pass);
+  const path = pass.map(([i, r], k) => `${k ? "L" : "M"}${x(i)},${y(r.score)}`).join("");
+  g += `<path d="${path}" fill="none" stroke="var(--series-1)" stroke-width="2"/>`;
+  rows.forEach((r, i) => {
+    g += r.pass
+      ? `<circle cx="${x(i)}" cy="${y(r.score)}" r="4" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="2"/>`
+      : `<text x="${x(i)}" y="${y(0) - 2}" text-anchor="middle" style="fill:var(--critical);font-size:14px">✕</text>`;
+    g += `<rect data-i="${i}" x="${x(i) - 10}" y="${T}" width="20" height="${H - T - B}" fill="transparent"/>`;
+  });
+  svg.innerHTML = g;
+  svg.querySelectorAll("rect[data-i]").forEach(el => {
+    el.onmousemove = e => {
+      const r = rows[el.dataset.i], tip = $("tip");
+      tip.innerHTML = `<b>${esc(r.id)}</b><br>${r.pass ? "✓ pass" : "✕ fail"} ${fmt(r.score)}<br>実績 ${pct(r.actual)} / 予測 ${pct(r.predicted)}<br>${esc(r.note || "")}${r.error ? "<br>" + esc(r.error) : ""}`;
+      tip.style.display = "block";
+      tip.style.left = Math.min(e.clientX + 12, innerWidth - 220) + "px"; tip.style.top = e.clientY + 12 + "px";
+    };
+    el.onmouseleave = () => $("tip").style.display = "none";
+  });
+}
+
+function renderBench(rows) {
+  $("bench").innerHTML = `<tr><th>id</th><th>結果</th><th class="num">score</th><th class="num">実績</th><th class="num">予測</th><th class="num">ギャップ</th><th>task</th><th>note</th></tr>` +
+    rows.slice().reverse().slice(0, 30).map(r => `<tr>
+      <td><a href="/state/analysis/${esc(r.id)}/" target="_blank">${esc(r.id)}</a>${r.restart_check ? ' <span class="tag restart">再起動</span>' : ""}</td>
+      <td class="${r.pass ? "ok" : "ng"}">${r.pass ? "pass" : "fail"}</td>
+      <td class="num">${fmt(r.score)}</td><td class="num">${pct(r.actual)}</td>
+      <td class="num">${pct(r.predicted)}</td><td class="num">${pct(r.gap)}</td>
+      <td>${esc(r.task)}</td><td class="muted">${esc(r.error || r.note)}</td></tr>`).join("");
+}
+
+function renderTasks(tasks) {
+  if (!tasks) { $("tasks").innerHTML = '<span class="muted">-</span>'; return; }
+  const by = {};
+  tasks.forEach(t => (by[t.status] ||= []).push(t));
+  const order = ["running", "dispatched", "ready", "blocked", "pending", "completed", "failed"];
+  const keys = Object.keys(by).sort((a, b) => (order.indexOf(a) + 99) % 99 - (order.indexOf(b) + 99) % 99);
+  $("tasks").innerHTML = keys.map(k => `<div><h2>${esc(k)} (${by[k].length})</h2><ul>${by[k].map(t => {
+    const title = t.task_title || t.display_name || t.id;
+    const restart = /\[restart\]/i.test(title) ? ' <span class="tag restart">restart</span>' : "";
+    return `<li title="${esc(t.spec)}">${esc(title.replace(/\[restart\]\s*/i, ""))}${restart}<br><span class="muted">${esc(t.id)}</span></li>`;
+  }).join("")}</ul></div>`).join("") || '<span class="muted">タスクなし</span>';
+}
+
+function renderGates(gates) {
+  if (!gates || !gates.length) { $("gates").innerHTML = '<span class="muted">なし</span>'; return; }
+  const open = document.activeElement?.closest?.(".gate")?.dataset.id;
+  $("gates").innerHTML = gates.map(g => {
+    let opts = []; try { opts = JSON.parse(g.options || "[]"); } catch {}
+    return `<div class="gate" data-id="${esc(g.id)}"><div>${esc(g.question)}</div><div class="muted">${esc(g.task_id)}</div>
+      <div class="opts">${opts.map(o => `<button data-res="${esc(o)}">${esc(o)}</button>`).join("")}
+      <input placeholder="自由回答 (Enter)" data-free></div></div>`;
+  }).join("");
+  if (open) $("gates").querySelector(`.gate[data-id="${CSS.escape(open)}"] input`)?.focus();
+}
+
+async function renderAnalysis(id, files) {
+  $("aid").textContent = id || "";
+  $("files").innerHTML = (files || []).map(f => `<a href="/state/${esc(f)}" target="_blank">${esc(f.split("/").slice(-2).join("/"))}</a>`).join(" · ");
+  const want = (files || []).filter(f => /\.(alp|pt)\.txt$/.test(f));
+  const key = want.join();
+  if ($("previews").dataset.key === key) return;
+  $("previews").dataset.key = key;
+  const parts = await Promise.all(want.map(async f => {
+    const t = await (await fetch("/state/" + f)).text();
+    return `<h2 style="margin-top:12px">${esc(f.split("/").slice(-2).join("/"))}</h2><pre>${esc(t.split("\n").slice(0, 40).join("\n"))}</pre>`;
+  }));
+  $("previews").innerHTML = parts.join("");
+}
+
+async function tick() {
+  try {
+    state = await (await fetch("/api/state")).json();
+  } catch (e) { $("errors").textContent = "ダッシュボードサーバに接続できません"; return; }
+  const rows = enrich(state.bench || []);
+  const passed = rows.filter(r => r.pass);
+  $("phase").textContent = state.phase || "-";
+  $("cur").textContent = rows.length ? (rows.at(-1).pass ? fmt(rows.at(-1).score) : "✕ fail") : "-";
+  $("best").textContent = passed.length ? fmt(Math.max(...passed.map(r => r.score))) : "-";
+  $("nbench").textContent = rows.length;
+  $("errors").textContent = (state.errors || []).join(" / ");
+  renderChart(rows); renderBench(rows); renderTasks(state.tasks); renderGates(state.gates);
+  renderAnalysis(state.analysis?.id, state.analysis?.files);
+}
+
+function remain() {
+  if (!state?.end) return;
+  const s = Math.max(0, (new Date(state.end) - Date.now()) / 1000 | 0);
+  $("remain").textContent = `${s / 3600 | 0}:${String((s % 3600) / 60 | 0).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+}
+
+async function postJSON(url, body) {
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!r.ok) throw new Error(await r.text());
+}
+
+$("hint").onsubmit = async e => {
+  e.preventDefault();
+  const who = $("who").value.trim(), text = $("text").value.trim();
+  if (!text) return;
+  try { localStorage.setItem("who", who); } catch {}
+  try { await postJSON("/api/hint", { who, text }); $("text").value = ""; $("hintmsg").textContent = "送信しました"; }
+  catch (err) { $("hintmsg").textContent = "失敗: " + err.message; }
+};
+
+async function resolveGate(id, resolution) {
+  try { await postJSON("/api/gate", { id, resolution }); tick(); } catch (err) { alert(err.message); }
+}
+$("gates").onclick = e => { const b = e.target.closest("button[data-res]"); if (b) resolveGate(b.closest(".gate").dataset.id, b.dataset.res); };
+$("gates").onkeydown = e => { if (e.key === "Enter" && e.target.dataset.free !== undefined && e.target.value.trim()) resolveGate(e.target.closest(".gate").dataset.id, e.target.value.trim()); };
+
+tick(); setInterval(tick, 3000); setInterval(remain, 1000);
+</script>
+</body>
+</html>

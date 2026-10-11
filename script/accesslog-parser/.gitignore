@@ -1,2 +1,5 @@
 access.log
 out.json
+# go test -cpuprofile の生成物
+*.test
+*.prof

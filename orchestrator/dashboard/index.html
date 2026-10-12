@@ -59,6 +59,7 @@ button.secondary { background: transparent; color: var(--text-primary); border: 
 .gate .opts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .tasks { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
 .tasks ul { list-style: none; margin: 0; padding: 0; }
+.tasks button { margin-top: 6px; font-size: 12px; padding: 2px 8px; }
 .tasks li { padding: 4px 0; border-bottom: 1px solid var(--border); font-size: 13px; overflow-wrap: anywhere; }
 #chart { width: 100%; height: 220px; display: block; }
 #chart .grid { stroke: var(--border); stroke-width: 1; }
@@ -120,6 +121,7 @@ a { color: var(--series-1); }
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmt = n => n == null || isNaN(n) ? "-" : Number(n).toLocaleString();
+const hms = ts => ts ? new Date(ts).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : "-";
 const pct = n => n == null || isNaN(n) ? "-" : (n > 0 ? "+" : "") + n.toFixed(1) + "%";
 let state = null;
 
@@ -160,7 +162,7 @@ function renderChart(rows) {
   svg.querySelectorAll("rect[data-i]").forEach(el => {
     el.onmousemove = e => {
       const r = rows[el.dataset.i], tip = $("tip");
-      tip.innerHTML = `<b>${esc(r.id)}</b><br>${r.pass ? "✓ pass" : "✕ fail"} ${fmt(r.score)}<br>実績 ${pct(r.actual)} / 予測 ${pct(r.predicted)}<br>${esc(r.note || "")}${r.error ? "<br>" + esc(r.error) : ""}`;
+      tip.innerHTML = `<b>${esc(r.id)}</b> ${hms(r.ts)}<br>${r.pass ? "✓ pass" : "✕ fail"} ${fmt(r.score)}<br>実績 ${pct(r.actual)} / 予測 ${pct(r.predicted)}<br>${esc(r.note || "")}${r.error ? "<br>" + esc(r.error) : ""}`;
       tip.style.display = "block";
       tip.style.left = Math.min(e.clientX + 12, innerWidth - 220) + "px"; tip.style.top = e.clientY + 12 + "px";
     };
@@ -169,27 +171,31 @@ function renderChart(rows) {
 }
 
 function renderBench(rows) {
-  $("bench").innerHTML = `<tr><th>id</th><th>結果</th><th class="num">score</th><th class="num">実績</th><th class="num">予測</th><th class="num">ギャップ</th><th>task</th><th>note</th></tr>` +
+  $("bench").innerHTML = `<tr><th>時刻</th><th>id</th><th>結果</th><th class="num">score</th><th class="num">実績</th><th class="num">予測</th><th class="num">ギャップ</th><th>task</th><th>note</th></tr>` +
     rows.slice().reverse().slice(0, 30).map(r => `<tr>
-      <td><a href="/state/analysis/${esc(r.id)}/" target="_blank">${esc(r.id)}</a>${r.restart_check ? ' <span class="tag restart">再起動</span>' : ""}</td>
+      <td>${hms(r.ts)}</td><td><a href="/state/analysis/${esc(r.id)}/" target="_blank">${esc(r.id)}</a>${r.restart_check ? ' <span class="tag restart">再起動</span>' : ""}</td>
       <td class="${r.pass ? "ok" : "ng"}">${r.pass ? "pass" : "fail"}</td>
       <td class="num">${fmt(r.score)}</td><td class="num">${pct(r.actual)}</td>
       <td class="num">${pct(r.predicted)}</td><td class="num">${pct(r.gap)}</td>
       <td>${esc(r.task)}</td><td class="muted">${esc(r.error || r.note)}</td></tr>`).join("");
 }
 
+const TASK_LIMIT = 10, showAll = {}; // status → 全件表示中か
 function renderTasks(tasks) {
   if (!tasks) { $("tasks").innerHTML = '<span class="muted">-</span>'; return; }
   const by = {};
-  tasks.forEach(t => (by[t.status] ||= []).push(t));
+  // 新しい動きがあった順 (completed_at は ISO、created_at は "YYYY-MM-DD hh:mm:ss" の UTC)
+  const at = t => Date.parse(t.completed_at || (t.created_at || "").replace(" ", "T") + "Z") || 0;
+  tasks.slice().sort((x, y) => at(y) - at(x)).forEach(t => (by[t.status] ||= []).push(t));
   const order = ["running", "dispatched", "ready", "blocked", "pending", "completed", "failed"];
   const keys = Object.keys(by).sort((a, b) => (order.indexOf(a) + 99) % 99 - (order.indexOf(b) + 99) % 99);
-  $("tasks").innerHTML = keys.map(k => `<div><h2>${esc(k)} (${by[k].length})</h2><ul>${by[k].map(t => {
+  $("tasks").innerHTML = keys.map(k => `<div><h2>${esc(k)} (${by[k].length})</h2><ul>${by[k].slice(0, showAll[k] ? undefined : TASK_LIMIT).map(t => {
     const title = t.task_title || t.display_name || t.id;
     const restart = /\[restart\]/i.test(title) ? ' <span class="tag restart">restart</span>' : "";
     return `<li title="${esc(t.spec)}">${esc(title.replace(/\[restart\]\s*/i, ""))}${restart}<br><span class="muted">${esc(t.id)}</span></li>`;
-  }).join("")}</ul></div>`).join("") || '<span class="muted">タスクなし</span>';
+  }).join("")}</ul>${by[k].length > TASK_LIMIT ? `<button class="secondary" data-status="${esc(k)}">${showAll[k] ? `先頭${TASK_LIMIT}件に戻す` : `全${by[k].length}件を表示`}</button>` : ""}</div>`).join("") || '<span class="muted">タスクなし</span>';
 }
+$("tasks").onclick = e => { const b = e.target.closest("button[data-status]"); if (b) { showAll[b.dataset.status] = !showAll[b.dataset.status]; renderTasks(state.tasks); } };
 
 const answered = {}; // gate id → 送った回答。Coordinator が gate-resolve するまで pending のまま見えるため
 function renderGates(gates) {

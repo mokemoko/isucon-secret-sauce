@@ -7,3 +7,4 @@ BENCH_CMD="echo TODO"                # ベンチ実行コマンド。標準出�
 PPROF_URL=""                         # 例 "http://localhost:6060/debug/pprof/profile?seconds=60" (APP_HOST 上で curl)
 PROBE_URLS=""                        # 再起動確認で前後比較する GET URL (APP_HOST 上で curl)
 ALP_ARGS="json --config ../config/alp.yml"  # 回収した access.log に対する alp 引数
+BLACKBOX_PATHS=""                    # 過去問リハーサル用: ワーカーに読ませないパス (ベンチマーカーのソース等)。本番は空

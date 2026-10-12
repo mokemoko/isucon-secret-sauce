@@ -33,6 +33,9 @@ userdata=$(cat <<EOF
 shutdown -h +$TTL_MIN
 install -d -m 700 -o isucon -g isucon /home/isucon/.ssh
 install -m 600 -o isucon -g isucon /home/ubuntu/.ssh/authorized_keys /home/isucon/.ssh/authorized_keys
+# 本番同様ベンチマーカーをブラックボックスにする: 実行に要る bin/ と userdata/ 以外 (ソース) を消す
+b=/home/isucon/private_isu/benchmarker
+[ -x \$b/bin/benchmarker ] && find \$b -mindepth 1 -maxdepth 1 ! -name bin ! -name userdata -exec rm -rf {} +
 EOF
 )
 id=$(aws ec2 run-instances --image-id $AMI --instance-type $TYPE --key-name $TAG \

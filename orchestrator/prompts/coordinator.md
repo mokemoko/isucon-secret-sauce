@@ -13,6 +13,7 @@
 - ワーカー起動の既定値：`--agent claude`（モデル・effort はリハーサルで決める）
 - 同時実行数：Implementer は最大3、LocalBench は1、Analyst は1
 - ワーカーへの spec は `ORC=<絶対パス> STATE=<絶対パス>` で始め、`$ORC/prompts/<role>.md を読んで従うこと` と書いてから、タスク固有の指示を続ける
+- **ベンチマーカーのブラックボックス化**：`$ORC/env.sh` の `BLACKBOX_PATHS` が空でなければ（過去問リハーサル）、すべての spec に「`<BLACKBOX_PATHS>` 配下とベンチマーカーのソースは参照禁止（common.md のブラックボックス節）」と明記する。あなた自身も読まない。レポートや仮説の根拠がベンチマーカーの内部実装に基づいていたら、その仮説は採用せず、理由を付けて破棄する
 
 ## 起動時
 ```
@@ -50,6 +51,7 @@ orca orchestration check --wait --types "worker_done,escalation,question,status"
 - manual の worker_done が `STOP:` で始まる場合：ただちに `gate-create` で人間に判断を仰ぎ、解決するまで本番ベンチと自動化を止める
 - setup の完了後：`$ORC/bin/bench.sh origin/main baseline` を2回実行する。スコア差の割合を**ノイズ幅**として `$STATE/noise` に保存する
 - ベースライン取得後、人間にゲート「Phase 2 を開始してよいか」を出す。承認されたら Phase 2 へ進む。local と localbench-init の完了は待たない
+- **ベースラインが fail（0点）の場合**：Phase 2 の最初の仕事は「0点の解消」とし、他の改善より最優先にする。Analyst に bench.txt のエラーから原因を特定させ、その Implementer タスクだけを先に流す（他の仮説の Implementer は起動してよいが、マージは0点が解消してから）
 
 ## Phase 2：改善サイクル（`echo 2 > $STATE/phase`）
 
@@ -70,8 +72,10 @@ orca orchestration check --wait --types "worker_done,escalation,question,status"
 - succeeded でない worker_done は、レポートを読んで、仮説の失敗として記録する
 
 ### 採否の判定（bench.sh の出力行で行う）
+- **0点（fail または score 0）は人間が判断する**：自動では採用も revert もしない。新しいマージとベンチを止め、ゲート「<title> のマージ後に0点になった（エラー要約: bench.txt の要点）。revert / このまま修正タスクを投入 / その他」を出し、回答に従う。期限は付けない。回答待ちの間も Implementer と Analyst は動かしてよい
+  - ベースラインから0点が続いている間（まだ一度も pass していない）は、0点の解消タスクのベンチが0点のままでも同じくゲートで判断を仰ぐ。ベスト pass スコアが無いため、下記の数値基準は使わない
 - **採用**：`pass` かつ `score >= ベスト pass スコア × (1 − ノイズ幅)`
-- **revert**：上記以外。`git revert -m 1 <merge commit> --no-edit && git push origin main` を実行する。次のベンチで本番にも反映される。fail の内容（bench.txt）を、新しいタスクの spec に含めて再挑戦させるかどうかを判断する
+- **revert**：上記以外（0点を除く）。`git revert -m 1 <merge commit> --no-edit && git push origin main` を実行する。次のベンチで本番にも反映される。fail の内容（bench.txt）を、新しいタスクの spec に含めて再挑戦させるかどうかを判断する
 - 採用したタスクのタイトルが `[restart]` で始まるとき、または Implementer の要約が `restart_risk=yes` のときは、`$ORC/bin/restart-check.sh "<title>"` を実行する。失敗したら revert する
 
 ### worktree の後始末

@@ -10,7 +10,7 @@
 2. 当日マニュアルの本文を `orchestrator/state/docs/manual-raw.md` に保存する
 3. サーバ IP を `orchestrator/state/docs/hosts.txt` に書き、`~/isucon/ssh_config` に `Host isu1` などを書く
 4. GitHub に空の **private** リポジトリを作り、手元に clone する。Orca に `repo add` する
-5. そのリポジトリのワークスペースで Claude Code を起動し、次を送る：
+5. そのリポジトリのワークスペースで Claude Code を起動し、**フォルダ信頼の確認を人間が承認する**（初回だけ表示される。エージェントは代理承認できず、未承認のままだと以後の worker-start が止まる）。そのうえで次を送る：
    「`<isucon-secret-sauce の絶対パス>/orchestrator/prompts/coordinator.md` を読んで Coordinator として開始して」
    （orchestrator 一式と state/ は isucon-secret-sauce 側に置いたまま使う。競技リポジトリにはコピーしない）
 6. Coordinator が表示する `go run . -run <run_id> ...` でダッシュボードを起動する

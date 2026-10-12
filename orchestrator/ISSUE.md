@@ -20,15 +20,18 @@
 | 10 | ベンチ実行順の制御（ボトルネック度×確信度） | done |
 | 13 | クエリ計測の既定を performance_schema digest 集計にする（slow log の負荷） | done |
 | 11 | ローカル予測の精度（検証先を本番同等 AMI の EC2 に） | hold |
-| 14 | setup の deploy key 登録が auto モードで止まる（リハ#2） | todo |
-| 15 | ダッシュボード起動コマンドの `$END` が未定義（リハ#2） | todo |
-| 16 | `bash -c` で包んだコマンドが Claude Code の承認待ちで止まる（リハ#2） | done |
 | 14 | [リハ#2] setup の rsync・deploy key 生成が auto mode の権限判定で拒否される | todo |
-| 15 | [リハ#2] 実行中 Dispatch のあるタスクに gate-create できない | todo |
-| 16 | [リハ#2] 待機中ワーカーの入力欄に下書きがあると send が届かない | todo |
-| 17 | [リハ#2] check --wait を重ねると2本目が「active actionable waiter」で失敗する | todo |
-| 18 | [リハ#2] zsh の配列が1始まりで、Coordinator のタスク登録ループの表示名がずれた | todo |
-| 19 | [リハ#2] PROBE_URLS が空だと restart-check.sh が再起動完了を待たずにベンチを走らせる | todo |
+| 15 | [リハ#2] ダッシュボード起動コマンドの `$END` が未定義 | todo |
+| 16 | [リハ#2] `bash -c` で包んだコマンドが Claude Code の承認待ちで止まる | done |
+| 17 | [リハ#2] 実行中 Dispatch のあるタスクに gate-create できない | todo |
+| 18 | [リハ#2] 待機中ワーカーの入力欄に下書きがあると send が届かない | todo |
+| 19 | [リハ#2] check --wait を重ねると2本目が「active actionable waiter」で失敗する | todo |
+| 20 | [リハ#2] zsh の配列が1始まりで、Coordinator のタスク登録ループの表示名がずれた | todo |
+| 21 | [リハ#2] PROBE_URLS が空だと restart-check.sh が再起動完了を待たずにベンチを走らせる | todo |
+| 22 | [リハ#2] Implementer が他の worktree のローカル環境に initialize を誤送信する | todo |
+| 23 | [リハ#2] EC2 の停止・再開で IP が変わり、複数の設定ファイルを手で直す必要がある | todo |
+| 24 | [リハ#2] 終盤にスコアが漂流し、採否判定がノイズに振られた | todo |
+| 25 | [リハ#2] ローカルの docker イメージ・ボリュームが終了後に残る | todo |
 
 ---
 
@@ -172,41 +175,59 @@
 - 現象：setup ワーカーの isu1→ローカル repo への rsync と、isu1 上の ssh-keygen＋gh repo deploy-key add が auto mode の分類器に拒否され、escalation で停止
 - 影響：Phase 1 のクリティカルパス（setup→ベースライン）が人間の対応待ちで止まる
 - その場の回避策：判断用タスクにゲートを出し、人間に許可または手動実施を依頼。事前に settings の allow に入れておくか、RUNBOOK の手順に deploy key の用意を入れるのが本筋
+- 補足：deploy key は `--allow-write` 付きで登録しようとして「Permission Grant」として止まった。人間が手動で承認して進めた
 
-## 15. [リハ#2] 実行中 Dispatch のあるタスクに gate-create できない
+## 15. [リハ#2] ダッシュボード起動コマンドの `$END` が未定義
+- 現象：coordinator.md が `go run . -run <run_id> -end $END` を人間に伝えるが、`$END` をどこにも定義していない。人間はコマンドを受け取れず、ダッシュボードが起動しなかった
+- 対応案：競技の終了時刻を人間が `state/docs/` に書く（RUNBOOK の手順に追加）か、ダッシュボードの `-end` を省略可能にする
+
+## 16. [リハ#2] `bash -c` で包んだコマンドが Claude Code の承認待ちで止まる
+- 現象：Coordinator が仮説8件のタスク登録を `bash -c '...'` で一括実行し、「This shell -c script ... could not be checked」で人間の承認待ちになった。Orca のゲートではないのでダッシュボードには出ない。無人なら約1分半で自動拒否
+- 原因：課題1の対策で common.md が zsh の単語分割の回避策として `bash -c` を勧めていた
+- 対応：common.md から `bash -c` の推奨を外し、`bash -c`・`sh -c`・`eval` で包まないと明記した。定型の一括処理（仮説 JSON → タスク登録）をスクリプト化するかは、リハーサル後に検討する
+
+## 17. [リハ#2] 実行中 Dispatch のあるタスクに gate-create できない
 - 現象：`gate-create --task <setup>` が `task_not_startable`（Dispatch が active）で拒否された
 - 影響：coordinator.md の「question/escalation は gate-create で人間に回す」がそのままでは実行できない
 - その場の回避策：判断用のタスク（ワーカーを起動しない）を task-create してそこに gate を付ける。coordinator.md に明記すべき
 
-## 14. setup の deploy key 登録が auto モードで止まる（リハ#2）
-- 現象：setup が `gh repo deploy-key add ... --allow-write` を実行しようとして、auto モードの分類器に「Permission Grant」として止められ、人間の承認待ちになった
-- 対応案：RUNBOOK の開始直後の手順で人間が登録する（サーバで `ssh-keygen` → `gh repo deploy-key add`）か、このコマンドだけを許可ルールに入れる
-
-## 15. ダッシュボード起動コマンドの `$END` が未定義（リハ#2）
-- 現象：coordinator.md が `go run . -run <run_id> -end $END` を人間に伝えるが、`$END` をどこにも定義していない。人間はコマンドを受け取れず、ダッシュボードが起動しなかった
-- 対応案：競技の終了時刻を人間が `state/docs/` に書く（RUNBOOK の手順に追加）か、ダッシュボードの `-end` を省略可能にする
-
-## 16. [リハ#2] 待機中ワーカーの入力欄に下書きがあると send が届かない
+## 18. [リハ#2] 待機中ワーカーの入力欄に下書きがあると send が届かない
 - 現象：escalation 後に待機していた setup ワーカーへ再開の send を送ったが、入力欄に人間の未送信の下書きが残っていて、ワーカーが通知を取り込まなかった
 - 影響：ゲートを解決しても setup が再開せず、Phase 1 のクリティカルパスが止まった
 - その場の回避策：人間に下書きを送信してもらう。Coordinator は send 後に worker-read でワーカーが取り込んだかを確認する
 
-## 17. [リハ#2] check --wait を重ねると2本目が「active actionable waiter」で失敗する
+## 19. [リハ#2] check --wait を重ねると2本目が「active actionable waiter」で失敗する
 - 現象：バックグラウンドの check --wait が残ったまま別の check --wait を出すと、`already has an active actionable waiter` で失敗する。jq に通していると原因が見えない
 - 影響：Coordinator が待機を見失い、メッセージを取りこぼしたように見える
 - その場の回避策：check --wait は常に1本だけにする（pgrep で残りを確認）。Run 単位で待機は1本という前提を coordinator.md に書くべき
 
-## 18. [リハ#2] zsh の配列が1始まりで、Coordinator のタスク登録ループの表示名がずれた
+## 20. [リハ#2] zsh の配列が1始まりで、Coordinator のタスク登録ループの表示名がずれた
 - 現象：仮説を task-create するループで `names[i]`（0始まりのつもり）を使い、display-name が1件ずつずれた
 - 影響：ダッシュボードの表示名が実際の仮説と食い違う（task_title は正しい）
-- その場の回避策：対応表を作り直した。common.md の zsh の注意に「配列は1始まり」を足すか、ループは bash -c で書く
+- その場の回避策：対応表を作り直した。common.md の zsh の注意に「配列は1始まり」を足す（bash -c は課題16の理由で使わない）
 
-## 19. [リハ#2] PROBE_URLS が空だと restart-check.sh が再起動完了を待たずにベンチを走らせる
+## 21. [リハ#2] PROBE_URLS が空だと restart-check.sh が再起動完了を待たずにベンチを走らせる
 - 現象：setup が PROBE_URLS を埋めておらず、snapshot が再起動前後とも空文字の shasum で即一致。reboot から15秒でベンチを開始し、ssh 切断で `bench command failed`（201510-2293ef9）
 - 影響：アプリは正常なのに restart-check が fail になり、手順どおりなら不要な revert をするところだった
 - その場の回避策：isu1 のサービスが active になるのを待ってから `SKIP_DEPLOY=1 bin/bench.sh HEAD` を手動で再実行。restart-check.sh は PROBE_URLS が空なら失敗させるか、ssh の疎通とサービスの active を待つべき。setup の受け入れ条件に PROBE_URLS を入れる
 
-## 16. `bash -c` で包んだコマンドが Claude Code の承認待ちで止まる（リハ#2）
-- 現象：Coordinator が仮説8件のタスク登録を `bash -c '...'` で一括実行し、「This shell -c script ... could not be checked」で人間の承認待ちになった。Orca のゲートではないのでダッシュボードには出ない。無人なら約1分半で自動拒否
-- 原因：課題1の対策で common.md が zsh の単語分割の回避策として `bash -c` を勧めていた
-- 対応：common.md から `bash -c` の推奨を外し、`bash -c`・`sh -c`・`eval` で包まないと明記した。定型の一括処理（仮説 JSON → タスク登録）をスクリプト化するかは、リハーサル後に検討する
+## 22. [リハ#2] Implementer が他の worktree のローカル環境に initialize を誤送信する
+- 現象：ownerchairs が isuride-idx（18091）へ、lastloc が isuride-appnotif（18093）へ、それぞれ initialize を1回誤送信した。idx 側では initialize の失敗が1回出た
+- 影響：並列で動く他の Implementer のローカル計測が乱れる。気づかないと誤った予測で採否の順位が狂う
+- その場の回避策：被害側のワーカーに知らせて取り直させた。implementer.md / local.md で、自分のポートを環境変数に固定して使う（他のポートに送らない）ことを明記すべき。ポート割り当てを worktree 名から決める仕組みにすると防げる
+
+## 23. [リハ#2] EC2 の停止・再開で IP が変わり、複数の設定ファイルを手で直す必要がある
+- 現象：一時停止のため EC2 を stop → start したらパブリック IP が変わった。ssh が実際に読むのは `~/isucon/ssh_config`（up.sh が書く `~/isucon/rehearsal/ssh_config` の写し）で、Coordinator が後者だけ直して接続できず数分空費した。queue.sh の「待ち分」も停止時間で膨らみ、順位が待ち時間順になった
+- 影響：再開が遅れる。列の順位が意味を失う
+- その場の回避策：`~/isucon/ssh_config`・`rehearsal/ssh_config`・`state/docs/hosts.txt` の3つを直した。列は優先度順で手動選択。up.sh で Elastic IP を付けるか、ssh_config を1か所（Include 先）だけにする。queue.sh は一時停止中の時間を待ち分から除く
+
+## 24. [リハ#2] 終盤にスコアが漂流し、採否判定がノイズに振られた
+- 現象：matcher 内製化の再起動確認で 15290（012418、再起動直後）→ 以後 11346・10776・11041 と下がった。apprides（10776）は基準（ベスト×0.74=11315）割れで revert したが、revert 後の main も 11041 で、apprides 由来ではなかった可能性が高い。t3a のCPUクレジット、再起動直後かどうか（再起動確認のスコアが高めに出る傾向: 15290）などが疑われるが未検証
+- 影響：「ベスト pass スコア × (1−ノイズ)」の基準が、たまたま高く出た1回（再起動確認）に引きずられ、効果のある変更を落としうる
+- その場の回避策：なし（終了間際）。ベストは再起動確認のスコアを除いて取る、境界付近は同じ sha で再ベンチしてから判定する、t3a ではなく c5 系で検証する、を検討。また Coordinator が待機プロセスの重複確認を `pgrep "orchestration check --.*wait"` で行い、ワーカーの待機を自分のものと誤認して待機が止まっていた（Run ID を条件に含めて解消）
+
+## 25. [リハ#2] ローカルの docker イメージ・ボリュームが終了後に残る
+- 現象：終了後、Implementer・localbench が作ったイメージ 43個（`isuride-<task>-app` ×2、`lb-<port>-app`）と匿名ボリューム 20個（mysql のデータ）が残った。コンテナと worktree は消えていた。リハ#1 の `isu-static`・`isu-tmpl`・`isu-lb3` のボリュームも残っていた
+- 影響：Mac のディスクを圧迫する（イメージ1個 0.8〜1GB）
+- 対応案：compose の down に `--rmi local -v` を付けるよう implementer.md・local.md に書く。Coordinator の終了手順に、`docker compose ls` で残ったプロジェクトを消す処理を入れる
+

@@ -31,7 +31,7 @@
 1. webapp と主要設定（nginx, mysql, systemd unit）をリポジトリに集める。人間が用意した private リポジトリ（Coordinator のワークスペース。remote は origin）に push する。リポジトリの新規作成・公開設定の変更はしない。各サーバに deploy key を置いて clone する
 2. リポジトリ直下の `Makefile` に `deploy` ターゲットを作る。中身は、ビルド、設定ファイルの配置（ホスト名で分岐してよい）、サービス再起動。サーバ上で `make deploy` が冪等に通ること
 3. 計測を有効化する
-   - nginx のアクセスログを JSON 形式にし、`request_time` を含める
+   - nginx のアクセスログを JSON 形式にし、`request_time` を含める。書き込みは `access_log <path> <format> buffer=64k flush=1s;` でバッファリングする（1リクエストごとの write を減らすため。ベンチ後の回収は1秒以上後なので取りこぼさない）
    - MySQL の slow log を `long_query_time=0` にする
    - アプリに pprof（または言語相当）を入れる。アプリが動く全台を env.sh の `PPROF_HOSTS` に書く
    - alp 設定（URI の正規化パターン）を作る

@@ -33,9 +33,9 @@
 3. 計測を有効化する
    - nginx のアクセスログを JSON 形式にし、`request_time` を含める。書き込みは `access_log <path> <format> buffer=64k flush=1s;` でバッファリングする（1リクエストごとの write を減らすため。ベンチ後の回収は1秒以上後なので取りこぼさない）
    - クエリの計測は **performance_schema の digest 集計を既定にする**（slow log は有効にしない。負荷が大きいため）。MySQL 8.0 なら `SELECT ENABLED FROM performance_schema.setup_consumers WHERE NAME='statements_digest'` が YES であることを確認し、env.sh に `QUERY_DIGEST=psdigest`・`DB_HOSTS`・`MYSQL_CMD` を書く。`bin/digest/query-psdigest.collect.sh post <host> /tmp/x` が行を返すことを確かめる
-   - DB が MySQL 8.0 以外（MariaDB、PostgreSQL など）や、構成が想定と違う場合は、**`$ORC/../note/measurement.md` を読んで**計測方法を選ぶ。足りないアダプタは `$ORC/bin/digest/` に足してよい（`$ORC` の変更はこの setup タスクに限り可）
+   - DB が MySQL 8.0 以外（MariaDB、PostgreSQL など）や、構成が想定と違う場合は、**`$ORC/../knowledge/measurement.md` を読んで**計測方法を選ぶ。足りないアダプタは `$ORC/bin/digest/` に足してよい（`$ORC` の変更はこの setup タスクに限り可）
    - アプリに pprof（または言語相当）を入れる。アプリが動く全台を env.sh の `PPROF_HOSTS` に書く
-   - alp 設定（URI の正規化パターン）を作る
+   - alp 設定（URI の正規化パターン）を作る。nginx の JSON ログ・alp・MySQL の設定は `$ORC/../templates/` の雛形と見比べ、必要な部分だけ取り込む（丸ごと置き換えない）
 4. `$ORC/env.sh` を埋める（`env.example.sh` 参照）。BENCH_CMD は manual の結果に従う
 5. `$ORC/bin/bench.sh` を1回実行し、`bench.jsonl` に pass 行が出ることを確認する（このタスクに限り本番ベンチ実行可）
 

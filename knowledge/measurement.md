@@ -59,7 +59,7 @@ orchestrator の実装（`orchestrator/bin/digest/` のアダプタ）との対�
 - nginx 以外
   - h2o・envoy なども alp の `ltsv` / `json` / `regexp` で読める形式でログを出せば、`access-alp.sh` がそのまま使える
   - どうしても合わない場合は、ログを JSON Lines（method, uri, status, request_time, body_bytes）に変換するアダプタ `access-<tool>.sh` を足す
-- URI の正規化は alp の `matching_groups`（`config/alp.yml`）で行う。ID を含むパスは必ずまとめる
+- URI の正規化は alp の `matching_groups`（雛形は `templates/alp.yml`。競技リポジトリには setup が `config/alp.yml` として置く）で行う。ID を含むパスは必ずまとめる
 
 ## プロファイル
 - Go：`net/http/pprof` を入れ、ベンチ中に `/debug/pprof/profile?seconds=60` を取る。アプリが複数台なら全台（`PPROF_HOSTS`）

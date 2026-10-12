@@ -12,7 +12,8 @@ Coordinator から Orca orchestration 経由でタスクを受け取り、完了
   - `reports/` : 各ワーカーのレポート置き場
 
 ## 知見（判断に迷ったら読む。当日の課題管理 `$ORC/ISSUE.md` とは別物）
-- `$ORC/../note/` : ISUCON のチューニング・計測の知見。構成や環境が想定と違うときの選択肢もここ（計測は `measurement.md`）
+- `$ORC/../knowledge/` : ISUCON のチューニング・計測の知見。`techniques.md`（手法。ZTC など通常業務では採らないものを含む）、`middleware.md`（nginx・DB・OS の設定の勘所）、`measurement.md`（計測。構成や環境が想定と違うときの選択肢）
+- `$ORC/../templates/` : nginx・MySQL・alp・systemd の設定とコードの雛形。既存の設定と見比べて必要な部分だけ取り込む
 - `$ORC/KNOWLEDGE.md` : この orchestrator 自体（Orca・プロンプト・計測パイプライン）の運用知見
 
 ## レギュレーション上の絶対ルール（違反は失格）

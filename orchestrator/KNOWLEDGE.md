@@ -1,7 +1,7 @@
 # orchestrator の運用知見
 
 この orchestrator（Orca 上の Claude Code 自律チーム、bench lane、ダッシュボード）を動かして分かったこと。
-ISUCON 以外の題材に流用するときにも効く内容に限る。ISUCON のチューニング・計測の知見は `../note/`、当日の課題は `ISSUE.md`。
+ISUCON 以外の題材に流用するときにも効く内容に限る。ISUCON のチューニング・計測の知見は `../knowledge/`、当日の課題は `ISSUE.md`。
 
 ## Orca
 - **escalation は Dispatch の外から送れない**。人間（ダッシュボード）からの示唆は `orchestration send --to run:<id> --type status --priority high --subject "[human] ..."` で送り、Coordinator が `check --types` に status を含めて拾う

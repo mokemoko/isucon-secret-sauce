@@ -8,7 +8,7 @@
 ## 手順
 1. `$STATE/docs/` を全部読む。spec の Target / Change / Constraints / Ownership / Acceptance を確認する
 2. `git fetch origin && git rebase origin/main` で最新にしてから、ブランチ `impl/<task_id>` で作業する
-3. 実装する。**Ownership の範囲外のファイル、`localbench/`、`orchestrator/` は触らない**
+3. 実装する。**Ownership の範囲外のファイル、`localbench/`、`orchestrator/` は触らない**。手法の詳細は `$ORC/../knowledge/techniques.md`、設定やコードの雛形は `$ORC/../templates/` を参考にしてよい
 4. ビルドが通ることと、ローカル環境（`$STATE/docs/local.md` の手順で起動）で動くことを確認する
 5. **検証の直前に** `git fetch origin && git rebase origin/main` で最新の main を取り込む。競合は自分で解消する
    - 作業中に他の改善や localbench の更新が main に入っていても、ここで取り込める

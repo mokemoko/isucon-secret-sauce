@@ -4,7 +4,7 @@
 状態：`todo` / `doing` / `done` / `hold`
 
 このファイルは課題管理だけに使う。本選の前日に空にし、当日は当日発生した課題（仕組みの不具合・運用の問題）だけを Coordinator が書き足す。
-残すべき知見は空にする前に移す：orchestrator の運用知見 → `KNOWLEDGE.md`、ISUCON のチューニング・計測の知見 → `../note/`（計測は `../note/measurement.md`）
+残すべき知見は空にする前に移す：orchestrator の運用知見 → `KNOWLEDGE.md`、ISUCON のチューニング・計測の知見 → `../knowledge/`（計測は `../knowledge/measurement.md`）
 
 | # | 課題 | 状態 |
 |---|---|---|
@@ -133,12 +133,12 @@
 - 本番の8時間では上限に達する可能性が高い。上位プランを検討する（運用ではなく契約の判断）
 
 ## 13. クエリ計測の既定を performance_schema digest 集計にする（done）
-- 背景：slow log（`long_query_time=0`）は全クエリをファイルに書くため負荷が大きく、DB 向けの改善を過大に見せる。比較の詳細は `../note/measurement.md`
+- 背景：slow log（`long_query_time=0`）は全クエリをファイルに書くため負荷が大きく、DB 向けの改善を過大に見せる。比較の詳細は `../knowledge/measurement.md`
 - 対応
   - `bin/digest/query-psdigest.collect.sh`（ベンチ前に TRUNCATE、ベンチ後に上位 30 種を TSV で取得）と `query-psdigest.sh`（queries スキーマへ変換。`no_index_used`・`tmp_disk_tables` を追加）
   - bench.sh：選んだクエリアダプタに `.collect.sh` があれば `DB_HOSTS` で pre/post を呼ぶ。env を `set -a` で読み込みアダプタに渡す
   - 既定を `QUERY_DIGEST=psdigest` に。slow log は MariaDB か深掘りのときだけ（`QUERY_DIGEST=pt`）
-  - recon の setup は slow log を有効にせず digest を確認する。構成が違えば `note/measurement.md` を読んで選ぶ
+  - recon の setup は slow log を有効にせず digest を確認する。構成が違えば `knowledge/measurement.md` を読んで選ぶ
   - 詳細ページ・summary.md にインデックス未使用の回数を出す
   - 検証：docker の mysql:8.0 で取得・変換を確認。`test/digest_test.sh` に変換（エスケープ・ピコ秒・NULL）、`test/bench_test.sh` に pre→ベンチ→post の順序のテストを追加
-- 残り：PostgreSQL のアダプタは当日 PG だったら setup で作る（作り方は `note/measurement.md`）
+- 残り：PostgreSQL のアダプタは当日 PG だったら setup で作る（作り方は `knowledge/measurement.md`）

@@ -144,13 +144,14 @@ function endpointsTable(rows, prev) {
 function queriesTable(rows, prev) {
   const total = rows.reduce((a, r) => a + r.sum, 0);
   const pm = new Map((prev || []).map(r => [r.fingerprint, r]));
+  const ni = rows.some(r => r.no_index_used != null); // digest 集計 (psdigest) のときだけある列
   return `<p class="muted">合計 ${sec(total)}（上位 ${rows.length} 種）。行をクリックするとサンプル SQL を表示</p><div class="scroll"><table>
-    <tr><th>シェア</th><th class="num">合計</th><th class="num">前回比</th><th class="num">回数</th><th class="num">平均</th><th class="num">p95</th><th class="num">走査行/回</th><th class="num">返却行/回</th><th>fingerprint</th></tr>
+    <tr><th>シェア</th><th class="num">合計</th><th class="num">前回比</th><th class="num">回数</th><th class="num">平均</th><th class="num">p95</th><th class="num">走査行/回</th><th class="num">返却行/回</th>${ni ? '<th class="num">index未使用</th>' : ""}<th>fingerprint</th></tr>
     ${rows.map(r => `<tr class="click" data-detail>
       <td>${share(r.sum, total)}</td><td class="num">${sec(r.sum)}</td><td class="num">${prev ? delta(r.sum, pm.get(r.fingerprint)?.sum) : "-"}</td>
       <td class="num">${fmt(r.count)}</td><td class="num">${sec(r.avg)}</td><td class="num">${sec(r.p95)}</td>
-      <td class="num">${fmt(r.rows_examined_avg)}</td><td class="num">${fmt(r.rows_sent_avg)}</td><td class="sql"><div>${esc(r.fingerprint)}</div></td></tr>
-      <tr hidden><td colspan="9"><pre style="white-space:pre-wrap">fingerprint: ${esc(r.fingerprint)}\n\nsample: ${esc(r.sample)}</pre></td></tr>`).join("")}
+      <td class="num">${fmt(r.rows_examined_avg)}</td><td class="num">${fmt(r.rows_sent_avg)}</td>${ni ? `<td class="num">${r.no_index_used ? fmt(r.no_index_used) : ""}</td>` : ""}<td class="sql"><div>${esc(r.fingerprint)}</div></td></tr>
+      <tr hidden><td colspan="${ni ? 10 : 9}"><pre style="white-space:pre-wrap">fingerprint: ${esc(r.fingerprint)}\n\nsample: ${esc(r.sample)}</pre></td></tr>`).join("")}
   </table></div>`;
 }
 

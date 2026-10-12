@@ -5,7 +5,8 @@
 # SKIP_DEPLOY=1 で deploy を飛ばす (再起動確認用。deploy の service restart が起動確認を潰すため)
 set -euo pipefail
 cd "$(dirname "$0")/.."
-. "${ENV_FILE:-./env.sh}"
+set -a; . "${ENV_FILE:-./env.sh}"; set +a   # アダプタ (bin/digest/*) にも MYSQL_CMD 等を渡す
+QUERY_DIGEST=${QUERY_DIGEST:-psdigest}
 ref=${1:-origin/main}; note=${2:-}
 STATE=${STATE:-state}
 mkdir -p "$STATE"
@@ -26,6 +27,14 @@ mkdir -p "$dir"
 for h in $HOSTS; do
   ssh "$h" "for f in $LOG_FILES; do sudo test -f \$f && sudo truncate -s0 \$f; done; true"
 done
+
+# クエリ集計をベンチ単位にする (アダプタに collect があれば、DB ホストでベンチ前にリセット・ベンチ後に取得)
+collect() {
+  local c=bin/digest/query-$QUERY_DIGEST.collect.sh h
+  [ -x "$c" ] || return 0
+  for h in ${DB_HOSTS:-$APP_HOST}; do "$c" "$1" "$h" "$dir/$h" 2>>"$dir/collect.err" || echo "collect $1 $h 失敗" >>"$dir/collect.err"; done
+}
+collect pre
 
 # ベンチ中のリソース推移 (各ホストで1秒ごとに /proc を読む)。ベンチ後に ssh を kill して止める
 sampler_pids=
@@ -49,6 +58,7 @@ else
   result='{"pass":false,"score":0,"error":"bench command failed"}'
 fi
 for p in $pprof_pids; do wait "$p" || true; done
+collect post
 if [ -n "$sampler_pids" ]; then
   for h in $HOSTS; do ssh "$h" "f=/tmp/isu-sampler-$id.pid; [ -f \$f ] && kill \$(cat \$f)" 2>/dev/null || true; done
   for p in $sampler_pids; do kill "$p" 2>/dev/null || true; wait "$p" 2>/dev/null || true; done

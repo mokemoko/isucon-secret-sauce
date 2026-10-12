@@ -31,6 +31,16 @@ got=$(echo "$r" | jq -c '{ncpu, user: .host.user, sys: .host.sys, iowait: .host.
   mysqld: (.procs[] | select(.comm == "mysqld") | .cpu), rss: (.procs[] | select(.comm == "mysqld") | .rss), new: (.procs[] | select(.comm == "new_proc") | .cpu)} | walk(if type == "number" then . + 0 else . end)')
 [ "$got" = "$exp" ] || { echo "FAIL resources: $got"; exit 1; }
 
+# query-psdigest: mysql -B のエスケープ (\n \t \\) を戻し、ピコ秒を秒に、合計/回数を1回あたりにする
+printf '%s\t' 'SELECT * FROM `posts` WHERE `user_id` = ?' 4 2000000000000 500000000000 900000000000 800000000000 400 8 4 0 1 0 >"$t/psd.raw"
+printf '%s\n' 'SELECT * FROM posts WHERE body = '"'"'a\nb\\c'"'"'' >>"$t/psd.raw"
+printf 'SELECT 1\t1\t1\t1\t1\t1\t0\t1\t0\t0\t0\t0\tNULL\n' >>"$t/psd.raw"
+r=$("$root/bin/digest/query-psdigest.sh" "$t/psd.raw" "$t/psd.txt")
+got=$(echo "$r" | jq -c '.[0] | {fingerprint, count, sum, avg, p95, max, rows_examined_avg, rows_sent_avg, no_index_used, tmp_disk_tables, sample} | walk(if type == "number" then . + 0 else . end)')
+exp='{"fingerprint":"SELECT * FROM `posts` WHERE `user_id` = ?","count":4,"sum":2,"avg":0.5,"p95":0.8,"max":0.9,"rows_examined_avg":100,"rows_sent_avg":2,"no_index_used":4,"tmp_disk_tables":1,"sample":"SELECT * FROM posts WHERE body = '"'"'a\nb\\c'"'"'"}'
+[ "$got" = "$exp" ] || { echo "FAIL psdigest: $got"; exit 1; }
+[ "$(echo "$r" | jq -r '.[1].sample')" = "" ] || { echo "FAIL psdigest NULL sample"; exit 1; }
+
 command -v pt-query-digest >/dev/null || { echo "ok (pt-query-digest なしのため query-pt は skip)"; exit 0; }
 # query-pt: fingerprint の英字が残り、制御文字と長さが抑えられること
 cols=$(seq -f 'column_%g' 1 100 | paste -sd, -)   # fingerprint 自体が 500 文字を超えるクエリ

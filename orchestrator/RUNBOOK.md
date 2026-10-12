@@ -4,6 +4,7 @@
 - `~/.ssh/config` に `Include ~/isucon/ssh_config` を追記しておく（当日は ssh_config だけを書けばよい）
 - `brew install alp percona-toolkit k6`。`gh auth status` が通ること
 - Orca で Claude Code が起動できること。過去問でリハーサル済みであること
+- `orchestrator/ISSUE.md` を空にする（表の見出しだけ残す）。残す知見は先に `orchestrator/KNOWLEDGE.md`・`note/` に移す。当日は Coordinator が当日の課題をここに書き足す
 
 ## 10:00 開始直後
 1. ポータルで AWS 環境を起動する（エージェントに AWS 権限は渡さない）

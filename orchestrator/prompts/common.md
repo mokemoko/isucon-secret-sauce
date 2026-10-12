@@ -11,6 +11,10 @@ Coordinator から Orca orchestration 経由でタスクを受け取り、完了
   - `analysis/<bench_id>/` : そのベンチの解析。`summary.md`（上位の要約。まずこれを読む）、`<host>/endpoints.json`・`queries.json`・`profile.json`、元のログと元の解析出力
   - `reports/` : 各ワーカーのレポート置き場
 
+## 知見（判断に迷ったら読む。当日の課題管理 `$ORC/ISSUE.md` とは別物）
+- `$ORC/../note/` : ISUCON のチューニング・計測の知見。構成や環境が想定と違うときの選択肢もここ（計測は `measurement.md`）
+- `$ORC/KNOWLEDGE.md` : この orchestrator 自体（Orca・プロンプト・計測パイプライン）の運用知見
+
 ## レギュレーション上の絶対ルール（違反は失格）
 - アプリの実行経路に、競技サーバ以外の外部リソース（LLM API、外部キャッシュ、別インスタンスへの処理委譲）を入れない
 - 問題内容・計測情報を公開しない。外部サービスへの投稿、公開 URL・公開リポジトリの作成、本番サーバの公開ディレクトリへのファイル設置は禁止

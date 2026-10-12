@@ -32,7 +32,8 @@
 2. リポジトリ直下の `Makefile` に `deploy` ターゲットを作る。中身は、ビルド、設定ファイルの配置（ホスト名で分岐してよい）、サービス再起動。サーバ上で `make deploy` が冪等に通ること
 3. 計測を有効化する
    - nginx のアクセスログを JSON 形式にし、`request_time` を含める。書き込みは `access_log <path> <format> buffer=64k flush=1s;` でバッファリングする（1リクエストごとの write を減らすため。ベンチ後の回収は1秒以上後なので取りこぼさない）
-   - MySQL の slow log を `long_query_time=0` にする
+   - クエリの計測は **performance_schema の digest 集計を既定にする**（slow log は有効にしない。負荷が大きいため）。MySQL 8.0 なら `SELECT ENABLED FROM performance_schema.setup_consumers WHERE NAME='statements_digest'` が YES であることを確認し、env.sh に `QUERY_DIGEST=psdigest`・`DB_HOSTS`・`MYSQL_CMD` を書く。`bin/digest/query-psdigest.collect.sh post <host> /tmp/x` が行を返すことを確かめる
+   - DB が MySQL 8.0 以外（MariaDB、PostgreSQL など）や、構成が想定と違う場合は、**`$ORC/../note/measurement.md` を読んで**計測方法を選ぶ。足りないアダプタは `$ORC/bin/digest/` に足してよい（`$ORC` の変更はこの setup タスクに限り可）
    - アプリに pprof（または言語相当）を入れる。アプリが動く全台を env.sh の `PPROF_HOSTS` に書く
    - alp 設定（URI の正規化パターン）を作る
 4. `$ORC/env.sh` を埋める（`env.example.sh` 参照）。BENCH_CMD は manual の結果に従う

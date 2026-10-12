@@ -65,4 +65,17 @@ done
 grep -q 'profile: .*/h2/cpu.pprof の変換に失敗' "$STATE/analysis/$id/digest.err" || { echo "FAIL digest.err"; exit 1; }
 [ "$(tail -n1 "$STATE/bench.jsonl" | jq -r .score)" = 1234 ] || { echo "FAIL bench not recorded after digest failure"; exit 1; }
 
+# 5) psdigest: ベンチ前に TRUNCATE、ベンチ後に SELECT が DB ホストで呼ばれ、queries.json になる
+cat >"$t/bin/fakemysql" <<EOF
+#!/usr/bin/env bash
+q=\$(cat); echo "\$q" | grep -q TRUNCATE && [ ! -f "$t/bench.ran" ] && echo truncated >"$t/mysql.log"   # ベンチ前のリセットだけ数える
+echo "\$q" | grep -q SELECT && [ -f "$t/mysql.log" ] && [ -f "$t/bench.ran" ] && printf 'SELECT ?\t3\t3000000000000\t1000000000000\t1000000000000\t1000000000000\t3\t3\t0\t0\t0\t0\tSELECT 1\n'
+true
+EOF
+printf '#!/bin/sh\ntouch %s\necho %s\n' "$t/bench.ran" "'{\"pass\":true,\"score\":1}'" >"$t/bin/fakebench2"; chmod +x "$t/bin/fakemysql" "$t/bin/fakebench2"
+sed -i '' "s|^BENCH_CMD=.*|BENCH_CMD=fakebench2; QUERY_DIGEST=psdigest; DB_HOSTS=h2; MYSQL_CMD=fakemysql|; s|^PPROF_URL=.*|PPROF_URL=\"\"; PROBE_URLS=\"\"; ALP_ARGS=\"\"|" "$t/env.sh"
+SKIP_DEPLOY=1 "$root/bin/bench.sh" HEAD >/dev/null
+id=$(tail -n1 "$STATE/bench.jsonl" | jq -r .id)
+[ "$(jq -r '.[0] | "\(.fingerprint) \(.count) \(.sum)"' "$STATE/analysis/$id/h2/queries.json")" = "SELECT ? 3 3" ] || { echo "FAIL psdigest flow"; exit 1; }
+
 echo "ok"

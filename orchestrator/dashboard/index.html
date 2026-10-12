@@ -95,7 +95,6 @@ a { color: var(--series-1); }
     </section>
     <section>
       <h2>最新解析 <span class="muted" id="aid"></span></h2>
-      <div id="files"></div>
       <div id="previews"></div>
     </section>
   </div>
@@ -173,7 +172,7 @@ function renderChart(rows) {
 function renderBench(rows) {
   $("bench").innerHTML = `<tr><th>時刻</th><th>id</th><th>結果</th><th class="num">score</th><th class="num">実績</th><th class="num">予測</th><th class="num">ギャップ</th><th>task</th><th>note</th></tr>` +
     rows.slice().reverse().slice(0, 30).map(r => `<tr>
-      <td>${hms(r.ts)}</td><td><a href="/state/analysis/${esc(r.id)}/" target="_blank">${esc(r.id)}</a>${r.restart_check ? ' <span class="tag restart">再起動</span>' : ""}</td>
+      <td>${hms(r.ts)}</td><td><a href="/bench/?id=${encodeURIComponent(r.id)}">${esc(r.id)}</a>${r.restart_check ? ' <span class="tag restart">再起動</span>' : ""}</td>
       <td class="${r.pass ? "ok" : "ng"}">${r.pass ? "pass" : "fail"}</td>
       <td class="num">${fmt(r.score)}</td><td class="num">${pct(r.actual)}</td>
       <td class="num">${pct(r.predicted)}</td><td class="num">${pct(r.gap)}</td>
@@ -210,18 +209,13 @@ function renderGates(gates) {
   if (open) $("gates").querySelector(`.gate[data-id="${CSS.escape(open)}"] input`)?.focus();
 }
 
-async function renderAnalysis(id, files) {
-  $("aid").textContent = id || "";
-  $("files").innerHTML = (files || []).map(f => `<a href="/state/${esc(f)}" target="_blank">${esc(f.split("/").slice(-2).join("/"))}</a>`).join(" · ");
-  const want = (files || []).filter(f => /\.(alp|pt)\.txt$/.test(f));
-  const key = want.join();
-  if ($("previews").dataset.key === key) return;
-  $("previews").dataset.key = key;
-  const parts = await Promise.all(want.map(async f => {
-    const t = await (await fetch("/state/" + f)).text();
-    return `<h2 style="margin-top:12px">${esc(f.split("/").slice(-2).join("/"))}</h2><pre>${esc(t.split("\n").slice(0, 40).join("\n"))}</pre>`;
-  }));
-  $("previews").innerHTML = parts.join("");
+// 最新ベンチの summary.md をそのまま出す。表と元の出力はベンチ詳細ページで見る
+async function renderAnalysis(id) {
+  if (!id || $("previews").dataset.key === id) return;
+  $("previews").dataset.key = id;
+  $("aid").innerHTML = `${esc(id)} · <a href="/bench/?id=${encodeURIComponent(id)}">詳細</a>`;
+  const r = await fetch(`/state/analysis/${encodeURIComponent(id)}/summary.md`);
+  $("previews").innerHTML = r.ok ? `<pre>${esc(await r.text())}</pre>` : '<span class="muted">summary.md なし</span>';
 }
 
 async function tick() {
@@ -236,7 +230,7 @@ async function tick() {
   $("nbench").textContent = rows.length;
   $("errors").textContent = (state.errors || []).join(" / ");
   renderChart(rows); renderBench(rows); renderTasks(state.tasks); renderGates(state.gates);
-  renderAnalysis(state.analysis?.id, state.analysis?.files);
+  renderAnalysis(state.analysis?.id);
 }
 
 function remain() {

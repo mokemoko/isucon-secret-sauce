@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bench Detail</title>
+<style>
+/* 色トークンは index.html と揃える */
+:root {
+  --surface-0: #f4f4f2; --surface-1: #fcfcfb; --border: #e2e1dc;
+  --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #8a8984;
+  --series-1: #2a78d6; --good: #0ca30c; --warning: #fab219; --critical: #d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --surface-0: #111110; --surface-1: #1a1a19; --border: #33332f;
+    --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e86; --series-1: #3987e5;
+  }
+}
+:root[data-theme="dark"] {
+  --surface-0: #111110; --surface-1: #1a1a19; --border: #33332f;
+  --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e86; --series-1: #3987e5;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--surface-0); color: var(--text-primary);
+  font: 14px/1.5 system-ui, -apple-system, "Hiragino Sans", sans-serif; }
+header { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: baseline; padding: 12px 16px;
+  border-bottom: 1px solid var(--border); background: var(--surface-1); position: sticky; top: 0; z-index: 1; }
+header h1 { font-size: 16px; margin: 0; font-variant-numeric: tabular-nums; }
+header nav { margin-left: auto; display: flex; gap: 12px; font-size: 13px; }
+.kpi { display: flex; flex-direction: column; }
+.kpi b { font-size: 22px; font-variant-numeric: tabular-nums; }
+.kpi span { font-size: 12px; color: var(--text-secondary); }
+main { display: flex; flex-direction: column; gap: 16px; padding: 16px; max-width: 1400px; }
+section { background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; min-width: 0; }
+section > h2 { font-size: 13px; margin: 0 0 8px; color: var(--text-secondary); font-weight: 600; display: flex; gap: 12px; align-items: center; }
+section > h2 .sw { margin-left: auto; display: flex; gap: 4px; }
+h3 { font-size: 15px; margin: 8px 0 0; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th { color: var(--text-secondary); font-weight: 500; font-size: 12px; }
+td.num, th.num { text-align: right; }
+td.sql div { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+td.sql { white-space: normal; overflow-wrap: anywhere; font-family: ui-monospace, monospace; font-size: 12px; min-width: 320px; }
+tr.click { cursor: pointer; }
+tr.click:hover td { background: var(--surface-0); }
+.scroll { overflow-x: auto; }
+.share { display: flex; align-items: center; gap: 6px; min-width: 110px; }
+.share i { display: block; height: 8px; border-radius: 0 4px 4px 0; background: var(--series-1); }
+.muted { color: var(--text-muted); }
+.ok::before { content: "✓ "; color: var(--good); }
+.ng::before { content: "✕ "; color: var(--critical); }
+.tag { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 4px; border: 1px solid var(--border); color: var(--text-secondary); }
+pre { margin: 0; font-size: 12px; overflow: auto; max-height: 600px; background: var(--surface-0); padding: 8px; border-radius: 4px; }
+button { font: inherit; font-size: 12px; background: transparent; color: var(--text-primary); border: 1px solid var(--border);
+  border-radius: 4px; padding: 2px 8px; cursor: pointer; }
+button[aria-pressed="true"] { background: var(--series-1); border-color: var(--series-1); color: #fff; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; }
+@media (max-width: 600px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+ul.msgs { margin: 0; padding-left: 18px; }
+a { color: var(--series-1); }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">-</h1>
+  <div class="kpi"><b id="result">-</b><span>結果</span></div>
+  <div class="kpi"><b id="score">-</b><span>スコア</span></div>
+  <div class="kpi"><b id="delta">-</b><span>前回比</span></div>
+  <div class="kpi"><b id="at">-</b><span>時刻</span></div>
+  <nav><a id="prev">← 前</a><a id="next">次 →</a><a href="/">ダッシュボード</a></nav>
+</header>
+<main id="main"></main>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt = n => n == null || isNaN(n) ? "-" : Number(n).toLocaleString();
+const sec = n => n == null ? "-" : n >= 10 ? n.toFixed(1) + "s" : n >= 1 ? n.toFixed(2) + "s" : (n * 1000).toFixed(n < 0.01 ? 1 : 0) + "ms";
+const hms = ts => ts ? new Date(ts).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : "-";
+// 前回比: 時間が減ったら ▼ (改善)、増えたら ▲。前回に無い行は new
+const delta = (cur, prev) => prev == null ? '<span class="tag">new</span>'
+  : Math.abs(cur - prev) < 0.05 ? '<span class="muted">±0</span>'
+  : `${cur < prev ? "▼" : "▲"} ${sec(Math.abs(cur - prev))}`;
+const share = (v, total) => { const p = total ? v / total * 100 : 0;
+  return `<div class="share"><i style="width:${Math.max(1, p * 0.6)}px"></i>${p.toFixed(1)}%</div>`; };
+
+const id = new URLSearchParams(location.search).get("id");
+async function getJSON(url) { try { const r = await fetch(url); return r.ok ? await r.json() : null; } catch { return null; } }
+async function getText(url) { const r = await fetch(url); return r.ok ? r.text() : `(取得できません: ${r.status})`; }
+
+// 表と元の出力の切り替え。元の出力は大きいことがあるので押されたときに読む
+function panel(title, body, rawUrl) {
+  const k = "p" + Math.random().toString(36).slice(2);
+  return `<section data-k="${k}"><h2>${title}<span class="sw">
+      <button aria-pressed="true" data-v="tbl">表</button>${rawUrl ? `<button aria-pressed="false" data-v="raw" data-url="${esc(rawUrl)}">元の出力</button>` : ""}</span></h2>
+    <div data-pane="tbl">${body}</div><div data-pane="raw" hidden></div></section>`;
+}
+document.addEventListener("click", async e => {
+  const b = e.target.closest("button[data-v]");
+  if (b) {
+    const s = b.closest("section");
+    s.querySelectorAll("button[data-v]").forEach(x => x.setAttribute("aria-pressed", x === b));
+    s.querySelectorAll("[data-pane]").forEach(p => p.hidden = p.dataset.pane !== b.dataset.v);
+    const raw = s.querySelector('[data-pane="raw"]');
+    if (b.dataset.v === "raw" && !raw.dataset.loaded) {
+      raw.dataset.loaded = 1; raw.innerHTML = '<span class="muted">読み込み中…</span>';
+      const t = await getText(b.dataset.url), lines = t.split("\n"), MAX = 3000;
+      raw.innerHTML = `<pre>${esc(lines.slice(0, MAX).join("\n"))}</pre>` +
+        (lines.length > MAX ? `<p class="muted">先頭 ${MAX} 行のみ表示（全 ${fmt(lines.length)} 行）。<a href="${esc(b.dataset.url)}" target="_blank">全文</a></p>` : "");
+    }
+    return;
+  }
+  const tr = e.target.closest("tr[data-detail]");
+  if (tr) { const d = tr.nextElementSibling; d.hidden = !d.hidden; }
+});
+
+function endpointsTable(rows, prev) {
+  const total = rows.reduce((a, r) => a + r.sum, 0);
+  const pm = new Map((prev || []).map(r => [r.method + " " + r.uri, r]));
+  return `<p class="muted">合計 ${sec(total)} / ${fmt(rows.reduce((a, r) => a + r.count, 0))} リクエスト</p><div class="scroll"><table>
+    <tr><th>シェア</th><th class="num">合計</th><th class="num">前回比</th><th class="num">回数</th><th class="num">平均</th><th class="num">p99</th><th class="num">最大</th><th class="num">4xx</th><th class="num">5xx</th><th>method</th><th>uri</th></tr>
+    ${rows.map(r => { const p = prev ? pm.get(r.method + " " + r.uri) : undefined; return `<tr>
+      <td>${share(r.sum, total)}</td><td class="num">${sec(r.sum)}</td><td class="num">${prev ? delta(r.sum, p?.sum) : "-"}</td>
+      <td class="num">${fmt(r.count)}</td><td class="num">${sec(r.avg)}</td><td class="num">${sec(r.p99)}</td><td class="num">${sec(r.max)}</td>
+      <td class="num">${r.status["4xx"] || ""}</td><td class="num">${r.status["5xx"] || ""}</td><td>${esc(r.method)}</td><td>${esc(r.uri)}</td></tr>`; }).join("")}
+  </table></div>`;
+}
+
+function queriesTable(rows, prev) {
+  const total = rows.reduce((a, r) => a + r.sum, 0);
+  const pm = new Map((prev || []).map(r => [r.fingerprint, r]));
+  return `<p class="muted">合計 ${sec(total)}（上位 ${rows.length} 種）。行をクリックするとサンプル SQL を表示</p><div class="scroll"><table>
+    <tr><th>シェア</th><th class="num">合計</th><th class="num">前回比</th><th class="num">回数</th><th class="num">平均</th><th class="num">p95</th><th class="num">走査行/回</th><th class="num">返却行/回</th><th>fingerprint</th></tr>
+    ${rows.map(r => `<tr class="click" data-detail>
+      <td>${share(r.sum, total)}</td><td class="num">${sec(r.sum)}</td><td class="num">${prev ? delta(r.sum, pm.get(r.fingerprint)?.sum) : "-"}</td>
+      <td class="num">${fmt(r.count)}</td><td class="num">${sec(r.avg)}</td><td class="num">${sec(r.p95)}</td>
+      <td class="num">${fmt(r.rows_examined_avg)}</td><td class="num">${fmt(r.rows_sent_avg)}</td><td class="sql"><div>${esc(r.fingerprint)}</div></td></tr>
+      <tr hidden><td colspan="9"><pre style="white-space:pre-wrap">fingerprint: ${esc(r.fingerprint)}\n\nsample: ${esc(r.sample)}</pre></td></tr>`).join("")}
+  </table></div>`;
+}
+
+function profileTables(p) {
+  const t = (rows, label) => `<div><h2>${label}</h2><div class="scroll"><table>
+    <tr><th class="num">flat%</th><th class="num">cum%</th><th class="num">cum</th><th>関数</th></tr>
+    ${rows.map(r => `<tr><td class="num">${r.flat_pct}%</td><td class="num">${r.cum_pct}%</td><td class="num">${sec(r.cum)}</td><td>${esc(r.func)}</td></tr>`).join("") ||
+      '<tr><td colspan="4" class="muted">なし</td></tr>'}</table></div></div>`;
+  return `<p class="muted">サンプル ${sec(p.samples)} / 計測 ${sec(p.duration)}（CPU 使用率 ${p.duration ? (p.samples / p.duration * 100).toFixed(0) : "-"}%、1コア換算）</p>
+    <div class="grid2">${t(p.flat.slice(0, 15), "自身の時間 (flat) 上位")}${t(p.cum.filter(r => r.func.startsWith("main.")).slice(0, 15), "累積 (cum) 上位：アプリの main パッケージ")}</div>`;
+}
+
+function messages(row) {
+  const ms = row.messages || [];
+  if (!ms.length) return "";
+  // 末尾の (GET /xxx) を外して種類ごとに数える
+  const g = {}; ms.forEach(m => { const k = m.replace(/\s*\([^)]*\)\s*$/, ""); g[k] = (g[k] || 0) + 1; });
+  const list = Object.entries(g).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<li>${esc(k)} <b>×${n}</b></li>`).join("");
+  return panel(`ベンチのメッセージ（${ms.length} 件${row.fail != null ? `、fail ${fmt(row.fail)}` : ""}）`,
+    `<ul class="msgs">${list}</ul>`, `/state/analysis/${id}/bench.txt`);
+}
+
+async function main() {
+  const info = await getJSON("/api/bench?id=" + encodeURIComponent(id || ""));
+  if (!info || !info.row) { $("main").innerHTML = `<section>ベンチ ${esc(id)} が見つかりません</section>`; return; }
+  const r = info.row, p = info.prev;
+  document.title = "Bench " + r.id;
+  $("title").textContent = r.id;
+  $("result").innerHTML = `<span class="${r.pass ? "ok" : "ng"}">${r.pass ? "pass" : "fail"}</span>`;
+  $("score").textContent = fmt(r.score);
+  $("delta").textContent = p && p.score ? ((r.score - p.score) / p.score * 100).toFixed(1).replace(/^(?!-)/, "+") + "%" : "-";
+  $("at").textContent = hms(r.ts);
+  for (const [k, v] of [["prev", p], ["next", info.next]]) {
+    if (v) $(k).href = "?id=" + encodeURIComponent(v.id); else $(k).classList.add("muted");
+  }
+  let html = `<section><div>${esc(r.note)}${r.restart_check ? ' <span class="tag">再起動確認</span>' : ""}</div>
+    <div class="muted">sha ${esc((r.sha || "").slice(0, 10))}${r.task ? ` · task ${esc(r.task)}` : ""}${r.predicted != null ? ` · ローカル予測 ${r.predicted > 0 ? "+" : ""}${r.predicted}%` : ""}${r.error ? ` · ${esc(r.error)}` : ""}
+    · 比較対象 ${p ? `<a href="?id=${encodeURIComponent(p.id)}">${esc(p.id)}</a>` : "なし"}</div></section>`;
+  html += messages(r);
+  html += panel("AI 向け要約 (summary.md)", `<p class="muted">Analyst・Coordinator が最初に読む要約。「元の出力」で表示</p>`, `/state/analysis/${id}/summary.md`);
+
+  const hosts = Object.keys(info.hosts).sort();
+  for (const h of hosts) {
+    const has = f => info.hosts[h].includes(f), base = `/state/analysis/${id}/${h}/`, pbase = p ? `/state/analysis/${p.id}/${h}/` : null;
+    const load = f => has(f) ? getJSON(base + f) : null;
+    const [ep, q, prof, pep, pq] = await Promise.all([load("endpoints.json"), load("queries.json"), load("profile.json"),
+      pbase && has("endpoints.json") ? getJSON(pbase + "endpoints.json") : null, pbase && has("queries.json") ? getJSON(pbase + "queries.json") : null]);
+    html += `<h3>${esc(h)}</h3>`;
+    if (!ep && !q && !prof) { html += `<section class="muted">解析データなし（計測無効化後など）</section>`; continue; }
+    if (ep) html += panel("エンドポイント（合計時間順）", endpointsTable(ep, pep), has("access.alp.txt") ? base + "access.alp.txt" : null);
+    if (q) html += panel("クエリ（合計時間順）", queriesTable(q, pq), info.hosts[h].find(f => f.endsWith(".pt.txt")) ? base + info.hosts[h].find(f => f.endsWith(".pt.txt")) : null);
+    if (prof) html += panel("CPU プロファイル", profileTables(prof), has("pprof.txt") ? base + "pprof.txt" : null);
+  }
+  $("main").innerHTML = html;
+}
+main();
+</script>
+</body>
+</html>

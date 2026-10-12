@@ -15,12 +15,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
 
 //go:embed index.html
 var indexHTML []byte
+
+//go:embed bench.html
+var benchHTML []byte
 
 var (
 	addr     = flag.String("addr", "127.0.0.1:9180", "listen address (localhost か Tailscale IP のみ。8080 等は競技アプリと衝突しやすいので避ける)")
@@ -75,11 +79,7 @@ func handleState(w http.ResponseWriter, r *http.Request) {
 	if len(bench) > 0 {
 		var last struct{ ID string }
 		json.Unmarshal(bench[len(bench)-1], &last)
-		files, _ := filepath.Glob(filepath.Join(*stateDir, "analysis", last.ID, "*", "*"))
-		for i, f := range files {
-			files[i], _ = filepath.Rel(*stateDir, f)
-		}
-		res["analysis"] = map[string]any{"id": last.ID, "files": files}
+		res["analysis"] = map[string]any{"id": last.ID}
 	}
 
 	if *runID != "" {
@@ -100,6 +100,49 @@ func handleState(w http.ResponseWriter, r *http.Request) {
 		errs = append(errs, "-run 未指定: タスク・ゲートは表示されません")
 	}
 	res["errors"] = errs
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(res)
+}
+
+var benchID = regexp.MustCompile(`^[0-9]{6}-[0-9a-f]{7}$`)
+
+// handleBench は1ベンチ分の台帳行・前後のベンチ・ホスト別ファイル一覧を返す。中身の JSON は /state/ から直接読ませる
+func handleBench(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	if !benchID.MatchString(id) { // パストラバーサル防止も兼ねる
+		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	rows := readBench()
+	res := map[string]any{"id": id}
+	for i, raw := range rows {
+		var row struct{ ID string }
+		json.Unmarshal(raw, &row)
+		if row.ID != id {
+			continue
+		}
+		res["row"] = raw
+		if i > 0 {
+			res["prev"] = rows[i-1]
+		}
+		if i+1 < len(rows) {
+			res["next"] = rows[i+1]
+		}
+	}
+	hosts := map[string][]string{}
+	dirs, _ := os.ReadDir(filepath.Join(*stateDir, "analysis", id))
+	for _, d := range dirs {
+		if !d.IsDir() {
+			continue
+		}
+		files, _ := os.ReadDir(filepath.Join(*stateDir, "analysis", id, d.Name()))
+		names := []string{}
+		for _, f := range files {
+			names = append(names, f.Name())
+		}
+		hosts[d.Name()] = names
+	}
+	res["hosts"] = hosts
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(res)
 }
@@ -135,6 +178,11 @@ func main() {
 		w.Write(indexHTML)
 	})
 	http.HandleFunc("/api/state", handleState)
+	http.HandleFunc("/api/bench", handleBench)
+	http.HandleFunc("/bench/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(benchHTML)
+	})
 	// 人間の示唆は status/high として Coordinator の Run inbox に入れる。escalation は Dispatch 外から送れないため。
 	// Coordinator は check --wait --types に status を含めること
 	http.HandleFunc("/api/hint", post(func(b map[string]string) ([]string, error) {

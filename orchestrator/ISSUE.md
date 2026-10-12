@@ -22,8 +22,13 @@
 | 11 | ローカル予測の精度（検証先を本番同等 AMI の EC2 に） | hold |
 | 14 | setup の deploy key 登録が auto モードで止まる（リハ#2） | todo |
 | 15 | ダッシュボード起動コマンドの `$END` が未定義（リハ#2） | todo |
+| 16 | `bash -c` で包んだコマンドが Claude Code の承認待ちで止まる（リハ#2） | done |
 | 14 | [リハ#2] setup の rsync・deploy key 生成が auto mode の権限判定で拒否される | todo |
 | 15 | [リハ#2] 実行中 Dispatch のあるタスクに gate-create できない | todo |
+| 16 | [リハ#2] 待機中ワーカーの入力欄に下書きがあると send が届かない | todo |
+| 17 | [リハ#2] check --wait を重ねると2本目が「active actionable waiter」で失敗する | todo |
+| 18 | [リハ#2] zsh の配列が1始まりで、Coordinator のタスク登録ループの表示名がずれた | todo |
+| 19 | [リハ#2] PROBE_URLS が空だと restart-check.sh が再起動完了を待たずにベンチを走らせる | todo |
 
 ---
 
@@ -180,3 +185,28 @@
 ## 15. ダッシュボード起動コマンドの `$END` が未定義（リハ#2）
 - 現象：coordinator.md が `go run . -run <run_id> -end $END` を人間に伝えるが、`$END` をどこにも定義していない。人間はコマンドを受け取れず、ダッシュボードが起動しなかった
 - 対応案：競技の終了時刻を人間が `state/docs/` に書く（RUNBOOK の手順に追加）か、ダッシュボードの `-end` を省略可能にする
+
+## 16. [リハ#2] 待機中ワーカーの入力欄に下書きがあると send が届かない
+- 現象：escalation 後に待機していた setup ワーカーへ再開の send を送ったが、入力欄に人間の未送信の下書きが残っていて、ワーカーが通知を取り込まなかった
+- 影響：ゲートを解決しても setup が再開せず、Phase 1 のクリティカルパスが止まった
+- その場の回避策：人間に下書きを送信してもらう。Coordinator は send 後に worker-read でワーカーが取り込んだかを確認する
+
+## 17. [リハ#2] check --wait を重ねると2本目が「active actionable waiter」で失敗する
+- 現象：バックグラウンドの check --wait が残ったまま別の check --wait を出すと、`already has an active actionable waiter` で失敗する。jq に通していると原因が見えない
+- 影響：Coordinator が待機を見失い、メッセージを取りこぼしたように見える
+- その場の回避策：check --wait は常に1本だけにする（pgrep で残りを確認）。Run 単位で待機は1本という前提を coordinator.md に書くべき
+
+## 18. [リハ#2] zsh の配列が1始まりで、Coordinator のタスク登録ループの表示名がずれた
+- 現象：仮説を task-create するループで `names[i]`（0始まりのつもり）を使い、display-name が1件ずつずれた
+- 影響：ダッシュボードの表示名が実際の仮説と食い違う（task_title は正しい）
+- その場の回避策：対応表を作り直した。common.md の zsh の注意に「配列は1始まり」を足すか、ループは bash -c で書く
+
+## 19. [リハ#2] PROBE_URLS が空だと restart-check.sh が再起動完了を待たずにベンチを走らせる
+- 現象：setup が PROBE_URLS を埋めておらず、snapshot が再起動前後とも空文字の shasum で即一致。reboot から15秒でベンチを開始し、ssh 切断で `bench command failed`（201510-2293ef9）
+- 影響：アプリは正常なのに restart-check が fail になり、手順どおりなら不要な revert をするところだった
+- その場の回避策：isu1 のサービスが active になるのを待ってから `SKIP_DEPLOY=1 bin/bench.sh HEAD` を手動で再実行。restart-check.sh は PROBE_URLS が空なら失敗させるか、ssh の疎通とサービスの active を待つべき。setup の受け入れ条件に PROBE_URLS を入れる
+
+## 16. `bash -c` で包んだコマンドが Claude Code の承認待ちで止まる（リハ#2）
+- 現象：Coordinator が仮説8件のタスク登録を `bash -c '...'` で一括実行し、「This shell -c script ... could not be checked」で人間の承認待ちになった。Orca のゲートではないのでダッシュボードには出ない。無人なら約1分半で自動拒否
+- 原因：課題1の対策で common.md が zsh の単語分割の回避策として `bash -c` を勧めていた
+- 対応：common.md から `bash -c` の推奨を外し、`bash -c`・`sh -c`・`eval` で包まないと明記した。定型の一括処理（仮説 JSON → タスク登録）をスクリプト化するかは、リハーサル後に検討する

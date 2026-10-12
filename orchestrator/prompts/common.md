@@ -36,5 +36,6 @@ Coordinator から Orca orchestration 経由でタスクを受け取り、完了
 - 本番サーバへの変更は **git 経由のみ**（`$ORC/bin/bench.sh` が deploy する）。サーバ上で直接ファイルを編集・再起動しない。調査目的の読み取り（ssh でのコマンド実行、ログ閲覧）は可
 - 本番ベンチを自分で回さない。ベンチは Coordinator が直列で回す
 - 判断に迷ったら preamble の `ask` で Coordinator に聞く。ローカルで質問 UI を開かない
-- シェルは zsh。**zsh は未クオートの `$var` を単語分割しない**ため、`ids="a b"; cmd $ids` は1引数 `"a b"` として渡る（リハーサルで依存なしのタスクができ、worker-start も失敗した）。複数の値は配列（`ids=(a b); cmd $ids`）にするか、`${=ids}` で展開するか、`bash -c '...'` で実行する。orca の `--deps` などのリストは、変数を介さず値を直接書くのが確実
+- シェルは zsh。**zsh は未クオートの `$var` を単語分割しない**ため、`ids="a b"; cmd $ids` は1引数 `"a b"` として渡る（リハーサルで依存なしのタスクができ、worker-start も失敗した）。複数の値は配列（`ids=(a b); cmd $ids`）にするか、`${=ids}` で展開する。orca の `--deps` などのリストは、変数を介さず値を直接書くのが確実
+- **`bash -c` / `sh -c` / `eval` でコマンドを包まない**。Claude Code が中身を検査できず、人間の承認待ちで止まる（無人なら自動で拒否される。リハーサルで Coordinator のタスク一括登録が止まった）。複数件の登録のような長い処理も包まずに、zsh のまま1件ずつ（または短いコマンドに分けて）実行する
 - worker_done の要約は3文以内。詳細は `$STATE/reports/` にファイルで残して `--report-path` で渡す

@@ -24,7 +24,7 @@
    - 時系列の流れ（ユーザー単位の遷移）
    - 並列度
    - 負荷ツールは k6 を推奨する（`brew install k6`）。POST の body はログに無いので、コードと採点ルールから組み立てる
-3. score は採点ルール（`$STATE/docs/app-map.md`）を真似た重み付きの成功件数にする。失敗・タイムアウトは減点する
+3. score は採点ルール（`$STATE/docs/scoring.json` の `weight`、無ければ `app-map.md`）を真似た重み付きの成功件数にする。失敗・タイムアウトは `penalties` に従って減点する
 
 ## 継続改善（Coordinator から都度タスクが来る）
 指標は2つ。

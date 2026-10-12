@@ -104,6 +104,10 @@ a { color: var(--series-1); }
       <div id="gates"></div>
     </section>
     <section>
+      <h2>競技中の知見（docs/insights.md、Coordinator が更新）</h2>
+      <pre id="insights" class="muted" style="white-space:pre-wrap">-</pre>
+    </section>
+    <section>
       <h2>示唆・指示を送る</h2>
       <form id="hint">
         <input id="who" placeholder="名前" style="margin-bottom:6px">
@@ -231,6 +235,9 @@ async function tick() {
   $("errors").textContent = (state.errors || []).join(" / ");
   renderChart(rows); renderBench(rows); renderTasks(state.tasks); renderGates(state.gates);
   renderAnalysis(state.analysis?.id);
+  fetch("/state/docs/insights.md").then(r => r.ok ? r.text() : "（まだありません）").then(t => {
+    if ($("insights").textContent !== t) { $("insights").textContent = t; $("insights").classList.toggle("muted", !t.trim()); }
+  }).catch(() => {});
 }
 
 function remain() {

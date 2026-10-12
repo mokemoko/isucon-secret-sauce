@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # usage: bin/digest.sh <analysis/<id> ディレクトリ> [ベンチ結果 JSON]
 # 回収したログ・プロファイルを、ツールに依存しない共通スキーマの JSON に変換し、AI 向けの summary.md を作る。
-#   <host>/endpoints.json : [{method, uri, count, status:{1xx..5xx}, sum, avg, max, p90, p95, p99, body_sum, body_avg}] 秒・sum 降順
+#   <host>/endpoints.json : [{method, uri, count, status:{1xx..5xx}, sum, avg, max, p90, p95, p99, body_sum, body_avg, weight}] 秒・sum 降順
+#                           weight は $STATE/docs/scoring.json の成功1件あたりの重み (載っていなければ null)
 #   <host>/queries.json   : [{fingerprint, count, sum, avg, p95, max, rows_examined_avg, rows_sent_avg, sample, (no_index_used, tmp_disk_tables)}] 秒・sum 降順
 #   <host>/profile.json   : {duration, samples, flat:[{func, flat, flat_pct, cum, cum_pct}], cum:[...]} 秒
 #   <host>/resources.json : {ncpu, t:[秒], host:{user,sys,iowait,steal,mem (%), rx,tx,rd,wr (B/s)}, procs:[{comm, cpu:[%/1コア], rss:[MB], cpu_avg, cpu_max, rss_max}]}
@@ -29,6 +30,19 @@ else
   for f in "$dir"/*/query-"$QUERY_DIGEST".raw; do [ -s "$f" ] && run query "$QUERY_DIGEST" "$f" "${f%/*}/queries.json" "${f%.raw}.txt"; done
 fi
 [ -s "$dir/collect.err" ] && cat "$dir/collect.err" >>"$dir/digest.err"
+
+# 採点の重み: scoring.json の endpoints[] を method ("*" は任意) と uri で突き合わせる。
+# uri は alp の matching_groups と同じく ^ で始まれば正規表現、それ以外は完全一致。最初に一致したものを使う。
+# alp がまとめた uri は正規表現の文字列そのもの (^/posts/\d+$) なので、matching_groups と同じ文字列を書けば完全一致する
+scoring=${SCORING:-$dir/../../docs/scoring.json}
+if [ -f "$scoring" ]; then
+  for f in "$dir"/*/endpoints.json; do
+    [ -f "$f" ] || continue
+    jq --slurpfile s "$scoring" 'map(. as $e | ([$s[0].endpoints[]? | select((.method == "*" or .method == $e.method)
+        and (.uri as $p | $e.uri == $p or ($p | startswith("^")) and (try ($e.uri | ltrimstr("^") | test($p)) catch false)))][0]) as $m
+      | . + {weight: ($m.weight // null)})' "$f" >"$f.tmp" 2>>"$dir/digest.err" && mv "$f.tmp" "$f" || rm -f "$f.tmp"
+  done
+fi
 for f in "$dir"/*/resources.raw; do [ -s "$f" ] && run resources "$RESOURCES_DIGEST" "$f" "${f%/*}/resources.json" "${f%/*}/resources.txt"; done
 for f in "$dir"/*/cpu.pprof; do [ -s "$f" ] && run profile "$PROFILE_DIGEST" "$f" "${f%/*}/profile.json" "${f%/*}/pprof.txt"; done
 
@@ -40,8 +54,9 @@ for f in "$dir"/*/cpu.pprof; do [ -s "$f" ] && run profile "$PROFILE_DIGEST" "$f
     [ -f "$f" ] || continue
     echo; jq -r "$(ms)"' (map(.sum) | add) as $t | (map(.count) | add) as $n |
       "## endpoints \(input_filename | split("/")[-2]) total=\($t * 10 | round / 10)s req=\($n)",
-      "share sum avg p99 count 4xx 5xx method uri",
-      (.[0:12][] | "\(.sum | sh($t)) \(.sum * 10 | round / 10)s \(.avg | ms) \(.p99 | ms) \(.count) \(.status["4xx"]) \(.status["5xx"]) \(.method) \(.uri)"),
+      (if any(.[]; .weight != null) then "加点あり (weight>0) の時間比率 \(map(select((.weight // 0) > 0) | .sum) | add // 0 | sh($t))。weight は scoring.json の成功1件あたりの重み (- は未記載)" else empty end),
+      "share sum avg p99 count 4xx 5xx weight method uri",
+      (.[0:12][] | "\(.sum | sh($t)) \(.sum * 10 | round / 10)s \(.avg | ms) \(.p99 | ms) \(.count) \(.status["4xx"]) \(.status["5xx"]) \(.weight // "-") \(.method) \(.uri)"),
       (if length > 12 then "(他 \(length - 12) 件 \((.[12:] | map(.sum) | add) * 10 | round / 10)s)" else empty end)' "$f"
   done
   for f in "$dir"/*/queries.json; do

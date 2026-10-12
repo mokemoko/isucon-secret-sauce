@@ -56,9 +56,11 @@ orca orchestration check --wait --types "worker_done,escalation,question,status"
 ## Phase 2：改善サイクル（`echo 2 > $STATE/phase`）
 
 ### Analyst（`--worktree current`）
-- 起動条件：本番ベンチが pass した後、未着手の仮説が3件未満なら起動する
+- 起動条件：本番ベンチが pass した後、次のどちらかを満たしたら起動する
+  - 未着手の仮説が3件未満
+  - **ボトルネックが移った**：採否の判定のたびに、そのベンチの `summary.md`（数KB）を読み、前回の pass ベンチと比べる。重みのあるエンドポイントの上位・クエリの上位・飽和しているプロセスの1位が入れ替わったら、既存の仮説の前提が崩れている可能性がある
 - spec に `bench_id` と `run_id` を渡す
-- 完了したら `$STATE/reports/analyst-<bench_id>.json` を読み、上から順に Implementer タスクとして `task-create` する
+- 完了したら `$STATE/reports/analyst-<bench_id>.json` を読み、上から順に Implementer タスクとして `task-create` する。spec には仮説の `spec` に加えて `evidence` と `scoring_rationale` を「根拠」節として必ず含める（Implementer が採点上のトレードオフを判断できるように）
 - `needs_human` のものは、タスクを作ってから `gate-create` で人間の承認を待つ
 
 ### Implementer（`--worktree new-top-level --name impl-<短い名前> --base-branch main`）
@@ -101,6 +103,19 @@ orca worktree rm --worktree path:<worktree の絶対パス> --force --json
 2. Implementer タスク「計測の無効化」を投入する。内容は、アクセスログ・pprof（slow log を有効にしていればそれも）を止め、ログレベルを下げること。performance_schema は止めなくてよい。採用基準は通常どおり
 3. `$ORC/bin/restart-check.sh final` を実行する。失敗したら、最後に restart-check が通った sha まで戻す
 4. END の FREEZE_BEFORE 分前以降は、何もマージしない。最終状態を人間に報告し、ゲート「この状態で終了してよいか」を出す
+
+## 競技中の知見 `$STATE/docs/insights.md`（あなただけが書く）
+全ワーカーが作業前に読むので、ここに書けば全員に配られる。Phase 1 の開始時に、以下の見出しで作る。
+```
+# insights
+## 採点について分かったこと      （scoring.json に無い実測の知見。例: POST /buy の失敗が大きく減点される）
+## ベンチマーカーの挙動            （アクセスログ・bench.txt から観測したシナリオ・並列度・タイムアウト）
+## 現在のボトルネック              （最新の pass ベンチの summary.md の上位。採否の判定のたびに書き換える）
+## 却下した仮説と理由              （revert・failed になったもの。同じ仮説を出さないため）
+## 人間の方針                      （[human] の示唆のうち、以後も守るもの）
+```
+- 更新のタイミング：採否の判定のたび（現在のボトルネック・却下した仮説）、Analyst の要約に `insights: あり` があったとき、`[human]` の示唆を受けたとき
+- 1項目1〜2行。古くなった項目は消す。採点の根拠になる事実は、元の資料（マニュアルの節、bench_id）を添える
 
 ## 当日の課題の記録
 仕組み側の問題（ツールやスクリプトの不具合、プロンプトの指示の誤り・曖昧さ、Orca の想定外の挙動、人間との連携の問題）に気づいたら、`$ORC/ISSUE.md` の表に1行と節を追記する（現象・影響・その場の回避策）。アプリのチューニング内容はここに書かない。

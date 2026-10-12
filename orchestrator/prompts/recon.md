@@ -7,7 +7,7 @@
 
 ## タスク別の成果物
 
-### manual：当日マニュアルの読解 → `$STATE/docs/constraints.md` と、`app-map.md` の採点ルール節
+### manual：当日マニュアルの読解 → `$STATE/docs/constraints.md`、`$STATE/docs/scoring.json`、`app-map.md` の採点ルール節
 - 入力：人間が保存した `$STATE/docs/manual-raw.md`
 - 次の項目を抜き出す
   - 採点ルール（加点・減点・失格条件）
@@ -15,6 +15,20 @@
   - サーバ台数・スペック
   - 禁止事項
   - 再起動・追試の条件
+- 採点ルールを機械で読める形にして `$STATE/docs/scoring.json` に書く。digest.sh がエンドポイント表に重みを付け、Analyst・Coordinator がボトルネックの優先度に使う
+  ```json
+  {
+    "summary": "採点の要約。重みで表せないルール（売上・完了件数など結果に応じた加点、段階的な負荷上昇など）もここに文章で書く",
+    "endpoints": [
+      {"method": "GET", "uri": "/api/items", "weight": 1, "note": "成功1件で1点"},
+      {"method": "POST", "uri": "^/api/items/[0-9]+/buy$", "weight": 10, "note": "購入成功で10点"},
+      {"method": "*", "uri": "^/(css|js|img)/", "weight": 0, "note": "加点なし"}
+    ],
+    "penalties": "エラー・タイムアウトの減点と失格条件（文章）",
+    "consistency": "書き込みの反映をどこまで遅らせてよいか（文章。キャッシュの可否の根拠になる）。記載が無ければ「記載なし」"
+  }
+  ```
+  - `uri` は alp の `matching_groups` と同じ書き方（`^` で始まれば正規表現、それ以外は完全一致）。`weight` は成功1件あたりの相対的な重み。分からないものは載せない（推測で重みを付けない）
 - 特に AI 利用、自動化（ポータル操作の自動化）、外部リソースに関する条項を原文のまま引用する。それがレギュレーション（AI によるコード分析・生成は可）より厳しい場合は、worker_done の要約の先頭に `STOP:` と書く
 
 ### survey：サーバ構成調査（ホスト1台ごと）→ `$STATE/docs/env.md` の該当ホストの節
@@ -51,4 +65,4 @@
 - 重そうな処理（N+1、全件取得、ロック、外部コマンド、画像処理）
 - 初期化処理
 - 静的ファイル
-- manual の採点ルールと照らして、スコアに効くエンドポイントに印を付ける
+- manual の採点ルール（`scoring.json`）と照らして、スコアに効くエンドポイントに印を付ける。scoring.json に載っていないが加点されそうなものは、根拠と一緒に app-map.md に書く（scoring.json は推測で埋めない）

@@ -132,10 +132,12 @@ document.addEventListener("click", async e => {
 function endpointsTable(rows, prev) {
   const total = rows.reduce((a, r) => a + r.sum, 0);
   const pm = new Map((prev || []).map(r => [r.method + " " + r.uri, r]));
-  return `<p class="muted">合計 ${sec(total)} / ${fmt(rows.reduce((a, r) => a + r.count, 0))} リクエスト</p><div class="scroll"><table>
-    <tr><th>シェア</th><th class="num">合計</th><th class="num">前回比</th><th class="num">回数</th><th class="num">平均</th><th class="num">p99</th><th class="num">最大</th><th class="num">4xx</th><th class="num">5xx</th><th>method</th><th>uri</th></tr>
+  const hasW = rows.some(r => r.weight != null); // docs/scoring.json があるときだけ
+  const wShare = hasW ? rows.filter(r => r.weight > 0).reduce((a, r) => a + r.sum, 0) / (total || 1) * 100 : null;
+  return `<p class="muted">合計 ${sec(total)} / ${fmt(rows.reduce((a, r) => a + r.count, 0))} リクエスト${hasW ? `。加点のあるエンドポイントの時間比率 ${wShare.toFixed(0)}%（重みは scoring.json の成功1件あたり。- は未記載）` : ""}</p><div class="scroll"><table>
+    <tr>${hasW ? '<th class="num">重み</th>' : ""}<th>シェア</th><th class="num">合計</th><th class="num">前回比</th><th class="num">回数</th><th class="num">平均</th><th class="num">p99</th><th class="num">最大</th><th class="num">4xx</th><th class="num">5xx</th><th>method</th><th>uri</th></tr>
     ${rows.map(r => { const p = prev ? pm.get(r.method + " " + r.uri) : undefined; return `<tr>
-      <td>${share(r.sum, total)}</td><td class="num">${sec(r.sum)}</td><td class="num">${prev ? delta(r.sum, p?.sum) : "-"}</td>
+      ${hasW ? `<td class="num">${r.weight ?? '<span class="muted">-</span>'}</td>` : ""}<td>${share(r.sum, total)}</td><td class="num">${sec(r.sum)}</td><td class="num">${prev ? delta(r.sum, p?.sum) : "-"}</td>
       <td class="num">${fmt(r.count)}</td><td class="num">${sec(r.avg)}</td><td class="num">${sec(r.p99)}</td><td class="num">${sec(r.max)}</td>
       <td class="num">${r.status["4xx"] || ""}</td><td class="num">${r.status["5xx"] || ""}</td><td>${esc(r.method)}</td><td>${esc(r.uri)}</td></tr>`; }).join("")}
   </table></div>`;

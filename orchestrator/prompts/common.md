@@ -6,7 +6,9 @@ Coordinator から Orca orchestration 経由でタスクを受け取り、完了
 ## パス
 - `$ORC` : orchestrator ディレクトリ (bin/, prompts/, env.sh)。Coordinator が spec に絶対パスで書く
 - `$STATE`: 共有状態ディレクトリ。Coordinator が spec に絶対パスで書く
-  - `docs/` : 調査結果。**作業前に必ず全部読む** (constraints.md, env.md, app-map.md, local.md)
+  - `docs/` : 調査結果。**作業前に必ず全部読む** (constraints.md, scoring.json, env.md, app-map.md, local.md, insights.md)
+    - `scoring.json` : 採点ルール（エンドポイント別の重み、減点、反映遅延の許容）。**時間の占有率だけでなく、この重みでボトルネックの優先度を決める**
+    - `insights.md` : 競技中に分かったこと（採点・ベンチマーカーの挙動・却下した仮説・人間の方針）。Coordinator だけが書く。気づきがあれば worker_done の要約か `ask` で Coordinator に伝える
   - `bench.jsonl` : 本番ベンチ台帳 (1行1ベンチ)
   - `analysis/<bench_id>/` : そのベンチの解析。`summary.md`（上位の要約。まずこれを読む）、`<host>/endpoints.json`・`queries.json`・`profile.json`、元のログと元の解析出力
   - `reports/` : 各ワーカーのレポート置き場

@@ -6,7 +6,7 @@
 あなたは専用の git worktree にいる。他の Implementer が並列で別の担当範囲を触っている。
 
 ## 手順
-1. `$STATE/docs/` を全部読む。spec の Target / Change / Constraints / Ownership / Acceptance を確認する
+1. `$STATE/docs/` を全部読む（`scoring.json`・`insights.md` を含む）。spec の Target / Change / Constraints / Ownership / Acceptance と「根拠」節を確認する。根拠と矛盾する変更（重みの大きいエンドポイントを遅くする、減点されるエラーを増やすなど）はしない
 2. `git fetch origin && git rebase origin/main` で最新にしてから、ブランチ `impl/<task_id>` で作業する
 3. 実装する。**Ownership の範囲外のファイル、`localbench/`、`orchestrator/` は触らない**。手法の詳細は `$ORC/../knowledge/techniques.md`、設定やコードの雛形は `$ORC/../templates/` を参考にしてよい
 4. ビルドが通ることと、ローカル環境（`$STATE/docs/local.md` の手順で起動）で動くことを確認する

@@ -16,7 +16,7 @@
 | 6 | 計測出力（alp / pt-query-digest）の正規化・構造化 | done |
 | 7 | ベンチ実行単位のサマリページ（構造化データの可視化＋元出力の切替） | done |
 | 8 | ベンチ中のプロセス単位リソース推移 | done |
-| 9 | 計測結果を改善案の検討・採否に反映する経路の整理 | todo |
+| 9 | 計測結果・採点ルール・競技中の知見を改善案の検討と採否に反映する経路 | done |
 | 10 | ベンチ実行順の制御（ボトルネック度×確信度） | todo |
 | 13 | クエリ計測の既定を performance_schema digest 集計にする（slow log の負荷） | done |
 | 11 | ローカル予測の精度（検証先を本番同等 AMI の EC2 に） | hold |
@@ -116,6 +116,18 @@
   - ただし Analyst の起動は約20回のベンチ中3回だけ。それ以外のベンチ結果は誰も読んでいない
   - Coordinator はスコアしか見ていない。Implementer は計測結果を見ない
 - 対応案：#6 の `summary.md` を各ベンチ後に生成し、Coordinator が毎回読んで「ボトルネックが移ったか」を判断する。移ったら Analyst を起動する。Implementer の spec にも該当エンドポイントやクエリの現状値を入れる
+- 追加で見つかった不足（スコアに勾配がある採点ルールへの対応）
+  - ボトルネックの順位が時間の占有率だけで決まり、採点の重みが入っていない
+  - 採点ルールが文章だけで、機械で読めない（#10 で使えない）
+  - 競技中に分かったことを共有の文書に書き戻す仕組みが無い
+  - Implementer に「採点上なぜ重要か」が伝わらない
+- 対応（done）
+  - 採点モデル `$STATE/docs/scoring.json`：manual タスクが作る（summary / endpoints[{method, uri, weight, note}] / penalties / consistency）。uri は alp の matching_groups と同じ書き方。推測で重みを付けない
+  - digest.sh が endpoints.json に `weight` を付け、summary.md に weight 列と「加点ありの時間比率」を出す。詳細ページにも重みの列と比率。`test/digest_test.sh` に照合のテスト
+  - 競技中の知見 `$STATE/docs/insights.md`：Coordinator だけが書く（採点の知見・ベンチマーカーの挙動・現在のボトルネック・却下した仮説・人間の方針）。全ワーカーが docs/ を読むので自動的に配られる。メイン画面に表示
+  - Coordinator は採否の判定のたびに summary.md を読み、ボトルネックが移ったら Analyst を起動する
+  - Analyst の出力に `scoring_rationale`。Coordinator は spec に evidence と合わせて「根拠」節として渡し、Implementer は根拠と矛盾する変更をしない
+  - LocalBench のスコアの重みも scoring.json から取る
 
 ## 10. ベンチ実行順の制御
 - 現状：Implementer が終わった順にマージしてベンチを回すので、ボトルネックではない改善が先に入ると効果が見えにくい（スコアが動かず、ノイズで revert されることもある）

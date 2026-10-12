@@ -20,6 +20,10 @@
 | 10 | ベンチ実行順の制御（ボトルネック度×確信度） | done |
 | 13 | クエリ計測の既定を performance_schema digest 集計にする（slow log の負荷） | done |
 | 11 | ローカル予測の精度（検証先を本番同等 AMI の EC2 に） | hold |
+| 14 | setup の deploy key 登録が auto モードで止まる（リハ#2） | todo |
+| 15 | ダッシュボード起動コマンドの `$END` が未定義（リハ#2） | todo |
+| 14 | [リハ#2] setup の rsync・deploy key 生成が auto mode の権限判定で拒否される | todo |
+| 15 | [リハ#2] 実行中 Dispatch のあるタスクに gate-create できない | todo |
 
 ---
 
@@ -158,3 +162,21 @@
   - 詳細ページ・summary.md にインデックス未使用の回数を出す
   - 検証：docker の mysql:8.0 で取得・変換を確認。`test/digest_test.sh` に変換（エスケープ・ピコ秒・NULL）、`test/bench_test.sh` に pre→ベンチ→post の順序のテストを追加
 - 残り：PostgreSQL のアダプタは当日 PG だったら setup で作る（作り方は `knowledge/measurement.md`）
+
+## 14. [リハ#2] setup の rsync・deploy key 生成が auto mode の権限判定で拒否される
+- 現象：setup ワーカーの isu1→ローカル repo への rsync と、isu1 上の ssh-keygen＋gh repo deploy-key add が auto mode の分類器に拒否され、escalation で停止
+- 影響：Phase 1 のクリティカルパス（setup→ベースライン）が人間の対応待ちで止まる
+- その場の回避策：判断用タスクにゲートを出し、人間に許可または手動実施を依頼。事前に settings の allow に入れておくか、RUNBOOK の手順に deploy key の用意を入れるのが本筋
+
+## 15. [リハ#2] 実行中 Dispatch のあるタスクに gate-create できない
+- 現象：`gate-create --task <setup>` が `task_not_startable`（Dispatch が active）で拒否された
+- 影響：coordinator.md の「question/escalation は gate-create で人間に回す」がそのままでは実行できない
+- その場の回避策：判断用のタスク（ワーカーを起動しない）を task-create してそこに gate を付ける。coordinator.md に明記すべき
+
+## 14. setup の deploy key 登録が auto モードで止まる（リハ#2）
+- 現象：setup が `gh repo deploy-key add ... --allow-write` を実行しようとして、auto モードの分類器に「Permission Grant」として止められ、人間の承認待ちになった
+- 対応案：RUNBOOK の開始直後の手順で人間が登録する（サーバで `ssh-keygen` → `gh repo deploy-key add`）か、このコマンドだけを許可ルールに入れる
+
+## 15. ダッシュボード起動コマンドの `$END` が未定義（リハ#2）
+- 現象：coordinator.md が `go run . -run <run_id> -end $END` を人間に伝えるが、`$END` をどこにも定義していない。人間はコマンドを受け取れず、ダッシュボードが起動しなかった
+- 対応案：競技の終了時刻を人間が `state/docs/` に書く（RUNBOOK の手順に追加）か、ダッシュボードの `-end` を省略可能にする

@@ -33,7 +33,7 @@
 3. 計測を有効化する
    - nginx のアクセスログを JSON 形式にし、`request_time` を含める
    - MySQL の slow log を `long_query_time=0` にする
-   - アプリに pprof（または言語相当）を入れる
+   - アプリに pprof（または言語相当）を入れる。アプリが動く全台を env.sh の `PPROF_HOSTS` に書く
    - alp 設定（URI の正規化パターン）を作る
 4. `$ORC/env.sh` を埋める（`env.example.sh` 参照）。BENCH_CMD は manual の結果に従う
 5. `$ORC/bin/bench.sh` を1回実行し、`bench.jsonl` に pass 行が出ることを確認する（このタスクに限り本番ベンチ実行可）

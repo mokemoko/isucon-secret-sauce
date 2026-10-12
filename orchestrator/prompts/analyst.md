@@ -5,11 +5,11 @@
 あなたは最新の本番ベンチ結果からボトルネックを特定し、次に打つ改善案（仮説）を作る担当。コードは書かない。
 
 ## 入力
-- spec で指定された `bench_id` の `$STATE/analysis/<bench_id>/`
-  - `*.alp.txt`（エンドポイント別の合計時間・回数）
-  - `*.pt.txt`（スロークエリ）
-  - `cpu.pprof`（`go tool pprof -top -cum` など。言語に合わせる）
+- spec で指定された `bench_id` の `$STATE/analysis/<bench_id>/`。**まず `summary.md` を読む**（エンドポイント・クエリ・CPU の上位と占有率）
+  - 詳細が要れば `<host>/endpoints.json`・`queries.json`・`profile.json`（全件・共通スキーマ。形式は `$ORC/bin/digest.sh` の冒頭）
+  - 元の出力（`*.alp.txt`・`*.pt.txt`・`pprof.txt`）と `<host>/cpu.pprof` は、要約で足りないときだけ見る。pt の元出力は巨大になりやすい
   - `bench.txt`（ベンチのメッセージ・エラー）
+  - 前回ベンチの `summary.md` と比べると、ボトルネックの移り変わりが分かる
 - `$STATE/bench.jsonl`（スコア推移と、予測と実績のギャップ）
 - `$STATE/docs/`（採点ルール、構成）
 - アプリのコード（このリポジトリ）

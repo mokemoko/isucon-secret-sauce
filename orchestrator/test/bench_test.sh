@@ -41,6 +41,7 @@ id=$(echo "$line" | jq -r .id)
 [ -f "$STATE/analysis/$id/h1/access.log" ] && [ ! -s "$STATE/analysis/$id/h1/access.log" ] || { echo "FAIL log not truncated/collected"; exit 1; }
 [ ! -e "$STATE/analysis/$id/h1/missing-slow.log" ] || { echo "FAIL missing log should be skipped"; exit 1; }
 [ ! -d "$STATE/bench.lock" ] || { echo "FAIL lock left"; exit 1; }
+grep -q 'pass=true score=1234' "$STATE/analysis/$id/summary.md" || { echo "FAIL summary.md"; exit 1; }
 
 # 2) ベンチコマンド失敗 → pass:false で記録される
 sed -i '' 's|^BENCH_CMD=.*|BENCH_CMD=false|' "$t/env.sh"
@@ -51,5 +52,17 @@ sed -i '' 's|^BENCH_CMD=.*|BENCH_CMD=false|' "$t/env.sh"
 sed -i '' 's|^BENCH_CMD=.*|BENCH_CMD=fakebench|' "$t/env.sh"
 SKIP_DEPLOY=1 "$root/bin/bench.sh" HEAD >/dev/null
 [ "$(tail -n1 "$STATE/bench.jsonl" | jq -r .restart_check)" = true ] || { echo "FAIL restart flag"; exit 1; }
+
+# 4) 複数ホストの pprof → <host>/cpu.pprof。プロファイルとして壊れていても台帳には記録され、理由が digest.err に残る
+echo notapprof >"$t/fake.pprof"
+sed -i '' "s|^HOSTS=.*|HOSTS=\"h1 h2\"; APP_HOST=h1; REPO_DIR=$t/app; LOG_FILES=\"$t/access.log\"|; s|^PPROF_URL=.*|PPROF_URL=file://$t/fake.pprof; PPROF_HOSTS=\"h1 h2\"; PROBE_URLS=\"\"; ALP_ARGS=\"\"|" "$t/env.sh"
+# deploy は飛ばす (fake ssh では2台が同じローカル repo を指し、並列 deploy の git lock が衝突するため)
+SKIP_DEPLOY=1 "$root/bin/bench.sh" HEAD >/dev/null
+id=$(tail -n1 "$STATE/bench.jsonl" | jq -r .id)
+for h in h1 h2; do
+  [ -s "$STATE/analysis/$id/$h/cpu.pprof" ] || { echo "FAIL pprof not collected for $h"; exit 1; }
+done
+grep -q 'profile: .*/h2/cpu.pprof の変換に失敗' "$STATE/analysis/$id/digest.err" || { echo "FAIL digest.err"; exit 1; }
+[ "$(tail -n1 "$STATE/bench.jsonl" | jq -r .score)" = 1234 ] || { echo "FAIL bench not recorded after digest failure"; exit 1; }
 
 echo "ok"

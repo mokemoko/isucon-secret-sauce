@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # usage: bin/bench.sh [ref=origin/main] [note]
-# 直列 bench lane: deploy → ログ truncate → bench (+pprof) → ログ回収・解析 → state/bench.jsonl に1行追記
+# 直列 bench lane: deploy → ログ truncate → bench (+pprof) → ログ回収・bin/digest.sh で解析 → state/bench.jsonl に1行追記
 # TASK=<orca task id> PREDICTED=<ローカル軽量ベンチでの改善率 %> を渡すと台帳に残り、予測と実績のギャップ分析に使う
 # SKIP_DEPLOY=1 で deploy を飛ばす (再起動確認用。deploy の service restart が起動確認を潰すため)
 set -euo pipefail
@@ -27,9 +27,12 @@ for h in $HOSTS; do
   ssh "$h" "for f in $LOG_FILES; do sudo test -f \$f && sudo truncate -s0 \$f; done; true"
 done
 
-pprof_pid=
+pprof_pids=
 if [ -n "$PPROF_URL" ]; then
-  ssh "$APP_HOST" "curl -s '$PPROF_URL'" >"$dir/cpu.pprof" & pprof_pid=$!
+  for h in ${PPROF_HOSTS:-$APP_HOST}; do
+    mkdir -p "$dir/$h"
+    ssh "$h" "curl -s '$PPROF_URL'" >"$dir/$h/cpu.pprof" & pprof_pids="$pprof_pids $!"
+  done
 fi
 if $BENCH_CMD >"$dir/bench.txt" 2>"$dir/bench.err"; then
   result=$(tail -n1 "$dir/bench.txt")
@@ -37,7 +40,7 @@ if $BENCH_CMD >"$dir/bench.txt" 2>"$dir/bench.err"; then
 else
   result='{"pass":false,"score":0,"error":"bench command failed"}'
 fi
-[ -z "$pprof_pid" ] || wait "$pprof_pid" || true
+for p in $pprof_pids; do wait "$p" || true; done
 
 for h in $HOSTS; do
   mkdir -p "$dir/$h"
@@ -45,13 +48,8 @@ for h in $HOSTS; do
     ssh "$h" "sudo test -f $f && sudo cat $f" >"$dir/$h/$(basename "$f")" 2>/dev/null || rm -f "$dir/$h/$(basename "$f")"
   done
 done
-# 解析ツールが無ければ生ログだけ残す
-for f in "$dir"/*/access.log; do
-  [ -f "$f" ] && command -v alp >/dev/null && alp $ALP_ARGS --file "$f" >"${f%.log}.alp.txt" 2>&1 || true
-done
-for f in "$dir"/*/*slow*.log; do
-  [ -f "$f" ] && command -v pt-query-digest >/dev/null && pt-query-digest "$f" >"${f%.log}.pt.txt" 2>&1 || true
-done
+# 共通スキーマへの変換と summary.md。失敗しても台帳への記録は続ける (理由は digest.err)
+bin/digest.sh "$dir" "$result" || true
 
 jq -cn --arg id "$id" --arg ts "$(date -u +%FT%TZ)" --arg sha "$sha" --arg note "$note" \
   --arg restart "${SKIP_DEPLOY:-0}" --arg task "${TASK:-}" --arg pred "${PREDICTED:-}" --argjson r "$result" \

@@ -8,7 +8,7 @@ Coordinator から Orca orchestration 経由でタスクを受け取り、完了
 - `$STATE`: 共有状態ディレクトリ。Coordinator が spec に絶対パスで書く
   - `docs/` : 調査結果。**作業前に必ず全部読む** (constraints.md, env.md, app-map.md, local.md)
   - `bench.jsonl` : 本番ベンチ台帳 (1行1ベンチ)
-  - `analysis/<bench_id>/<host>/` : そのベンチの access.log, slow log, *.alp.txt, *.pt.txt, cpu.pprof
+  - `analysis/<bench_id>/` : そのベンチの解析。`summary.md`（上位の要約。まずこれを読む）、`<host>/endpoints.json`・`queries.json`・`profile.json`、元のログと元の解析出力
   - `reports/` : 各ワーカーのレポート置き場
 
 ## レギュレーション上の絶対ルール（違反は失格）

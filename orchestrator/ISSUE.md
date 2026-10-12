@@ -10,7 +10,7 @@
 | 3 | スコア 0 の間の採否基準 | done |
 | 4 | ベンチマーカーのブラックボックス化（過去問実行時） | done |
 | 5 | ダッシュボード：タスク表示を各10件＋全件切替、スコア履歴にタイムスタンプ | done |
-| 6 | 計測出力（alp / pt-query-digest）の正規化・構造化 | todo |
+| 6 | 計測出力（alp / pt-query-digest）の正規化・構造化 | done |
 | 7 | ベンチ実行単位のサマリページ（構造化データの可視化＋元出力の切替） | todo |
 | 8 | ベンチ中のプロセス単位リソース推移 | todo |
 | 9 | 計測結果を改善案の検討・採否に反映する経路の整理 | todo |
@@ -66,6 +66,18 @@
   - スロークエリ：pt-query-digest `--output json` → 変換。代替：`performance_schema.events_statements_summary_by_digest` を SQL で取得（slow log 不要・軽量で、MySQL/MariaDB 共通）
   - プロファイル：`go tool pprof -top` → 変換。言語が Go 以外ならそのプロファイラに差し替え
 - 検討点：変換をどこで行うか（bench.sh の後段で手元実行が第一候補）、URI 正規化ルールの持ち方（現状は alp.yml）
+- 対応（done）
+  - `bin/digest.sh`：bench.sh の後段で手元実行。`<host>/endpoints.json`・`queries.json`・`profile.json` と `summary.md` を作る。スキーマは digest.sh 冒頭に記載
+  - アダプタは `bin/digest/<kind>-<tool>.sh`（引数は入力と元出力の保存先、stdout にスキーマ JSON）。env.sh の `ACCESS_DIGEST`/`QUERY_DIGEST`/`PROFILE_DIGEST` で選ぶ。今は `access-alp`・`query-pt`・`profile-pprof` の3本
+  - alp は `--format json`、pt は `--output json --limit 30` を使い、サンプル SQL は300文字で切る。URI 正規化は従来どおり alp.yml
+  - summary.md はリハーサル最大のベンチで 2.7KB（元出力は alp 3.8KB＋pt 1.2MB）。エンドポイント上位12、クエリ上位10（占有率つき）、CPU の flat 上位と main パッケージの cum 上位
+  - pprof もホスト単位にした（env.sh の `PPROF_HOSTS` の各台から並列に取得し `<host>/cpu.pprof`・`<host>/profile.json`）。従来は APP_HOST の1台だけでベンチ直下に置いていた
+  - 変換に失敗してもベンチ台帳への記録は止めない（理由は `digest.err` と summary.md 末尾）
+  - Analyst と common.md は summary.md を最初に読むよう更新。リハーサルの全21ベンチを再変換済み
+- 見送り（必要になったらアダプタを足す）
+  - `performance_schema` の digest 集計によるクエリ取得（slow log 不要）。ベンチ前の TRUNCATE と DB 接続情報が要るため、DB が MySQL 以外のとき・slow log の負荷が問題になったときに作る
+  - alp を使わないアクセスログ集計。alp は json/ltsv/regexp のログ形式に対応しているので当面不要
+  - Go 以外の言語のプロファイラ
 
 ## 7. ベンチ実行単位のサマリページ
 - 現状：ダッシュボードには最新ベンチの生ファイルへのリンクしかない

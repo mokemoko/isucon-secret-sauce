@@ -1,7 +1,7 @@
 // ISUCON 自律チューニングのダッシュボード。
 // state/ (bench.jsonl, analysis/, phase) と Orca orchestration の状態を読み、人間の示唆・ゲート回答を Orca に流す。
 // 問題情報を外に出さないため、必ず 127.0.0.1 か Tailscale のアドレスで待ち受けること。
-// 起動: cd dashboard && go run . -run <run_id> -end 2026-10-31T18:00:00+09:00 [-addr <tailscale-ip>:8080]
+// 起動: cd dashboard && go run . -run <run_id> -end 2026-10-31T18:00:00+09:00 [-addr <tailscale-ip>:9180]
 package main
 
 import (
@@ -23,7 +23,7 @@ import (
 var indexHTML []byte
 
 var (
-	addr     = flag.String("addr", "127.0.0.1:8080", "listen address (localhost か Tailscale IP のみ)")
+	addr     = flag.String("addr", "127.0.0.1:9180", "listen address (localhost か Tailscale IP のみ。8080 等は競技アプリと衝突しやすいので避ける)")
 	stateDir = flag.String("state", "../state", "bench lane の state ディレクトリ")
 	runID    = flag.String("run", "", "Orca orchestration Run id (Coordinator の run-create 結果)")
 	endAt    = flag.String("end", "", "競技終了時刻 RFC3339 (例 2026-10-31T18:00:00+09:00)")
@@ -145,11 +145,14 @@ func main() {
 		return []string{"orchestration", "send", "--to", "run:" + *runID, "--type", "status", "--priority", "high",
 			"--subject", "[human] " + b["who"], "--body", text}, nil
 	}))
+	// gate-resolve は呼び出し元の Run に束縛されていて外部プロセスからは実行できないため、
+	// 回答をメッセージで送り、Coordinator 自身に gate-resolve させる
 	http.HandleFunc("/api/gate", post(func(b map[string]string) ([]string, error) {
-		if b["id"] == "" || b["resolution"] == "" {
-			return nil, errBad("id と resolution が必要です")
+		if b["id"] == "" || b["resolution"] == "" || *runID == "" {
+			return nil, errBad("id, resolution と -run が必要です")
 		}
-		return []string{"orchestration", "gate-resolve", "--id", b["id"], "--resolution", b["resolution"]}, nil
+		return []string{"orchestration", "send", "--to", "run:" + *runID, "--type", "status", "--priority", "high",
+			"--subject", "[human-gate] " + b["id"], "--body", b["resolution"]}, nil
 	}))
 	http.Handle("/state/", http.StripPrefix("/state/", http.FileServer(http.Dir(*stateDir))))
 	log.Printf("dashboard on http://%s (run=%q state=%s)", *addr, *runID, *stateDir)

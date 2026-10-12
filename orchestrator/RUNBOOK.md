@@ -14,7 +14,7 @@
    「`<isucon-secret-sauce の絶対パス>/orchestrator/prompts/coordinator.md` を読んで Coordinator として開始して」
    （orchestrator 一式と state/ は isucon-secret-sauce 側に置いたまま使う。競技リポジトリにはコピーしない）
 6. Coordinator が表示する `go run . -run <run_id> ...` でダッシュボードを起動する
-   - チームメンバーと共有する場合は `-addr <Tailscale IP>:8080` にする。**グローバル IP で公開しない**
+   - チームメンバーと共有する場合は `-addr <Tailscale IP>:9180` にする。**グローバル IP で公開しない**
 
 ## 競技中
 - 示唆・指示はダッシュボードの入力欄から送る。承認待ちはダッシュボードに出る

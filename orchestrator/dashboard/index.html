@@ -191,14 +191,15 @@ function renderTasks(tasks) {
   }).join("")}</ul></div>`).join("") || '<span class="muted">タスクなし</span>';
 }
 
+const answered = {}; // gate id → 送った回答。Coordinator が gate-resolve するまで pending のまま見えるため
 function renderGates(gates) {
   if (!gates || !gates.length) { $("gates").innerHTML = '<span class="muted">なし</span>'; return; }
   const open = document.activeElement?.closest?.(".gate")?.dataset.id;
   $("gates").innerHTML = gates.map(g => {
     let opts = []; try { opts = JSON.parse(g.options || "[]"); } catch {}
     return `<div class="gate" data-id="${esc(g.id)}"><div>${esc(g.question)}</div><div class="muted">${esc(g.task_id)}</div>
-      <div class="opts">${opts.map(o => `<button data-res="${esc(o)}">${esc(o)}</button>`).join("")}
-      <input placeholder="自由回答 (Enter)" data-free></div></div>`;
+      ${answered[g.id] ? `<div class="muted">「${esc(answered[g.id])}」を送信済み・Coordinator の反映待ち</div>` : `<div class="opts">${opts.map(o => `<button data-res="${esc(o)}">${esc(o)}</button>`).join("")}
+      <input placeholder="自由回答 (Enter)" data-free></div>`}</div>`;
   }).join("");
   if (open) $("gates").querySelector(`.gate[data-id="${CSS.escape(open)}"] input`)?.focus();
 }
@@ -253,7 +254,7 @@ $("hint").onsubmit = async e => {
 };
 
 async function resolveGate(id, resolution) {
-  try { await postJSON("/api/gate", { id, resolution }); tick(); } catch (err) { alert(err.message); }
+  try { await postJSON("/api/gate", { id, resolution }); answered[id] = resolution; tick(); } catch (err) { alert(err.message); }
 }
 $("gates").onclick = e => { const b = e.target.closest("button[data-res]"); if (b) resolveGate(b.closest(".gate").dataset.id, b.dataset.res); };
 $("gates").onkeydown = e => { if (e.key === "Enter" && e.target.dataset.free !== undefined && e.target.value.trim()) resolveGate(e.target.closest(".gate").dataset.id, e.target.value.trim()); };

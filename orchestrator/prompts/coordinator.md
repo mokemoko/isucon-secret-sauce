@@ -27,6 +27,7 @@ echo 1 > $STATE/phase
 orca orchestration check --wait --types "worker_done,escalation,question,status" --timeout-ms 300000 --json
 ```
 - 返ってきた Delivery の全メッセージを処理してから `--ack <delivery_id>` する
+- マージ待ちの列（`$STATE/merge-queue.json`）が空でなく、ベンチを回していなければ、`--timeout-ms 1000` で新着だけ取り込んでから列を処理する（長く待たない）
 - **subject が `[human]` で始まる status**：人間の示唆。内容を具体的なタスクにして最優先で投入する。曖昧なら Analyst に具体化させる。受理したことを `orca worktree set --worktree active --comment` で示す
 - **subject が `[human-gate] <gate_id>` の status**：人間のゲート回答。body が回答なので、`orca orchestration gate-resolve --id <gate_id> --resolution "<body>"` をあなたが実行する（ダッシュボードは Run 外のプロセスのため gate-resolve できない）
 - **question**：自分で答えられるものは `reply` する。人間の判断が要るものは `gate-create` で人間に回し、ワーカーには「人間に確認中」と reply する
@@ -65,12 +66,18 @@ orca orchestration check --wait --types "worker_done,escalation,question,status"
 
 ### Implementer（`--worktree new-top-level --name impl-<短い名前> --base-branch main`）
 - 仮説の spec をそのまま渡す。担当範囲（area）が実行中の他タスクと重なるものは、重なりが解消されるまで待たせる
-- worker_done を受けたら、**マージキュー**としてあなたが1つずつ処理する
-  1. `git fetch origin && git checkout main && git pull --ff-only`
-  2. `git merge --no-ff origin/impl/<task_id>`。競合したら `git merge --abort` して、そのワーカーに `send --to dispatch:<id>` でリベースを依頼する（release しない）
-  3. `git push origin main`
-  4. `TASK=<task_id> PREDICTED=<predicted か空> $ORC/bin/bench.sh origin/main "<title>"`
-  5. 採否を判定する（下記）
+- worker_done（succeeded）を受けたら、すぐにはマージせず**マージ待ちの列**に積む。ボトルネックの大きいものから入れないと、効果の小さい変更が先に入ってスコアの推移が読めなくなるため
+  ```
+  $ORC/bin/queue.sh add '{"task_id":"<id>","branch":"impl/<id>","title":"<title>","expected_gain":"<仮説の値>","predicted":<数値 か null>,"restart_risk":<true|false>,"targets":<仮説の targets>}'
+  ```
+- **ベンチの枠が空いたら**（ベンチを回していないとき、メッセージを処理し終えるたびに確認する）、`$ORC/bin/queue.sh rank` で並べ、先頭の1つを処理する。順位の理由は表（優先度 = ボトルネック度 × 確信度、`*` は20分以上待ったもの）に出る。人間の示唆で特定のタスクを先にするよう言われたら、それを優先してよい
+  1. `$ORC/bin/queue.sh pop <task_id>`
+  2. `git fetch origin && git checkout main && git pull --ff-only`
+  3. `git merge --no-ff origin/impl/<task_id>`。競合したら `git merge --abort` して、そのワーカーに `send --to dispatch:<id>` でリベースを依頼する（release しない。リベース後の worker_done で列に積み直す）。列の次のものに進む
+  4. `git push origin main`
+  5. `TASK=<task_id> PREDICTED=<predicted か空> $ORC/bin/bench.sh origin/main "<title>"`
+  6. 採否を判定する（下記）
+- 列に1つしか無ければ待たずに処理する（ベンチの枠を遊ばせない）
 - succeeded でない worker_done は、レポートを読んで、仮説の失敗として記録する
 
 ### 採否の判定（bench.sh の出力行で行う）
@@ -99,7 +106,7 @@ orca worktree rm --worktree path:<worktree の絶対パス> --force --json
 **前倒しの禁止と例外**：Phase 3 は END の PHASE3_BEFORE 分前まで始めない。仮説の在庫が尽きたら、まず Analyst を起動して補充する。
 それでも前倒しすべきと判断した場合は、期限付きゲート「Phase 3 を前倒ししてよいか（理由: ...）（10分後の HH:MM までに回答が無ければ 承認 扱い）」を出す。回答待ちの間も Analyst による補充は続け、却下されたらそのまま Phase 2 を続ける。
 
-1. 新規の Implementer の起動を止め、実行中のものは (PHASE3_BEFORE − FREEZE_BEFORE) / 2 分以内に終わらせるよう `send` する。間に合わないものは worker-stop する
+1. 新規の Implementer の起動を止め、実行中のものは (PHASE3_BEFORE − FREEZE_BEFORE) / 2 分以内に終わらせるよう `send` する。間に合わないものは worker-stop する。マージ待ちの列は優先度順に流し切る（残り時間で回せるベンチ数を超える分は、優先度の低いものから捨てる）
 2. Implementer タスク「計測の無効化」を投入する。内容は、アクセスログ・pprof（slow log を有効にしていればそれも）を止め、ログレベルを下げること。performance_schema は止めなくてよい。採用基準は通常どおり
 3. `$ORC/bin/restart-check.sh final` を実行する。失敗したら、最後に restart-check が通った sha まで戻す
 4. END の FREEZE_BEFORE 分前以降は、何もマージしない。最終状態を人間に報告し、ゲート「この状態で終了してよいか」を出す

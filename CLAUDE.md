@@ -22,7 +22,7 @@ ISUCON 本選を、Orca 上の Claude Code チームで自律的にチューニ�
 ## orchestrator を変えるとき
 - `prompts/*.md` はエージェントがそのまま読む指示書。スクリプトの引数・出力・ファイル配置を変えたら、それを参照しているプロンプトも同時に直す（`grep -rn` で確認）
 - 計測は「ツールに依存しない共通スキーマ + アダプタ」（`bin/digest/<kind>-<tool>.sh`、収集が要るものは `.collect.sh`）。スキーマは `bin/digest.sh` の冒頭。解析の失敗でベンチ台帳への記録を止めない
-- テスト：`bash orchestrator/test/bench_test.sh && bash orchestrator/test/digest_test.sh`（偽の ssh でローカル完結。pt-query-digest が無ければ一部 skip）
+- テスト：`for t in orchestrator/test/*_test.sh; do bash $t || break; done`（偽の ssh でローカル完結。pt-query-digest が無ければ一部 skip）
 - ダッシュボード：`cd orchestrator/dashboard && env -u GOROOT go run . -run <run_id> -end <RFC3339>`（`GOROOT` が mise の Go を指していて壊れるため外す）。表示の確認はヘッドレス Chrome の `--screenshot` でできる
 - `orchestrator/state/` と `orchestrator/env.sh` は git 管理外（問題情報・計測データを含む）
 

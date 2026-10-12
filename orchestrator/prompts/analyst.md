@@ -32,6 +32,7 @@
 {
   "title": "[restart] のような接頭辞を必要に応じて付けた短い題",
   "area": "担当範囲 (例: GET /api/posts, users テーブル, nginx)",
+  "targets": [{"method": "GET", "uri": "/api/posts"}, {"query": "from `comments` where `post_id`"}],
   "expected_gain": "high|mid|low",
   "cost": "high|mid|low",
   "restart_risk": true,
@@ -43,4 +44,5 @@
 ```
 
 `restart_risk` が true のものは、title の先頭に `[restart] ` を付ける。
+`targets` は、この仮説が速くするエンドポイント（summary.md の method と uri をそのまま）とクエリ（fingerprint に含まれる特徴的な部分文字列）。ベンチの実行順の優先度（そのボトルネックの大きさ）の計算に使われる。全体に効くもの（nginx・DB の設定など）は、最も効くと考えるものを書く
 worker_done の要約には、上位3件の題を書く。採点やベンチマーカーの挙動について新しく分かったことがあれば、`$STATE/reports/analyst-<bench_id>.md` に書き、要約の末尾に `insights: あり` と付ける。

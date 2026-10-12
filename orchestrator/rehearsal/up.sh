@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# リハーサル用 private-isu を1台構築する (ベンチマーカーは同居実行)。後片付けは down.sh
-# 作るもの: key pair / security group (自IPから22,80のみ) / EC2 1台。全て tag Project=isucon-rehearsal
+# リハーサル用の過去問を1台構築する (ベンチマーカーは同居実行)。後片付けは down.sh
+# 例: AMI=ami-0fcf9e8e8675a9ee4 VOL_GB=20 BLACKBOX_DIR= rehearsal/up.sh   (ISUCON14。既定は private-isu)
+# 作るもの: key pair / security group (自IPから22,80,443のみ) / EC2 1台。全て tag Project=isucon-rehearsal
 set -euo pipefail
 TAG=isucon-rehearsal
 AMI=${AMI:-ami-09201e964bee13733}   # catatsuy_private_isu_amd64_20260524
@@ -8,6 +9,9 @@ TYPE=${TYPE:-t3a.medium}
 AZ=${AZ:-ap-northeast-1a}
 TTL_MIN=${TTL_MIN:-600}             # 消し忘れ対策: 起動から TTL_MIN 分で OS shutdown → terminate
 DIR=${DIR:-$HOME/isucon/rehearsal}
+VOL_GB=${VOL_GB:-}                  # 空なら AMI の容量のまま
+# AMI にベンチマーカーのソースが同梱される問題で、起動時に bin/ と userdata/ 以外を消すディレクトリ。空なら何もしない
+BLACKBOX_DIR=${BLACKBOX_DIR-/home/isucon/private_isu/benchmarker}
 
 mkdir -p "$DIR"
 myip=$(curl -fsS https://checkip.amazonaws.com)
@@ -23,7 +27,7 @@ subnet=$(aws ec2 describe-subnets --filters Name=vpc-id,Values=$vpc Name=availab
   --query 'Subnets[0].SubnetId' --output text)
 sg=$(aws ec2 create-security-group --group-name $TAG --description $TAG --vpc-id $vpc \
   --tag-specifications "$(tag security-group)" --query GroupId --output text)
-for p in 22 80; do
+for p in 22 80 443; do
   aws ec2 authorize-security-group-ingress --group-id $sg --protocol tcp --port $p --cidr "$myip/32" >/dev/null
 done
 
@@ -34,12 +38,13 @@ shutdown -h +$TTL_MIN
 install -d -m 700 -o isucon -g isucon /home/isucon/.ssh
 install -m 600 -o isucon -g isucon /home/ubuntu/.ssh/authorized_keys /home/isucon/.ssh/authorized_keys
 # 本番同様ベンチマーカーをブラックボックスにする: 実行に要る bin/ と userdata/ 以外 (ソース) を消す
-b=/home/isucon/private_isu/benchmarker
-[ -x \$b/bin/benchmarker ] && find \$b -mindepth 1 -maxdepth 1 ! -name bin ! -name userdata -exec rm -rf {} +
+b=$BLACKBOX_DIR
+[ -n "\$b" ] && [ -d \$b/bin ] && find \$b -mindepth 1 -maxdepth 1 ! -name bin ! -name userdata -exec rm -rf {} +
 EOF
 )
 id=$(aws ec2 run-instances --image-id $AMI --instance-type $TYPE --key-name $TAG \
   --subnet-id $subnet --security-group-ids $sg --associate-public-ip-address \
+  ${VOL_GB:+--block-device-mappings "DeviceName=$(aws ec2 describe-images --image-ids $AMI --query 'Images[0].RootDeviceName' --output text),Ebs={VolumeSize=$VOL_GB,VolumeType=gp3,DeleteOnTermination=true}"} \
   --instance-initiated-shutdown-behavior terminate --user-data "$userdata" \
   --tag-specifications "$(tag instance)" "$(tag volume)" \
   --query 'Instances[0].InstanceId' --output text)

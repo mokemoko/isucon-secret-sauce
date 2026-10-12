@@ -9,6 +9,7 @@
   - 詳細が要れば `<host>/endpoints.json`・`queries.json`・`profile.json`（全件・共通スキーマ。形式は `$ORC/bin/digest.sh` の冒頭）
   - 元の出力（`*.alp.txt`・`*.pt.txt`・`pprof.txt`）と `<host>/cpu.pprof` は、要約で足りないときだけ見る。pt の元出力は巨大になりやすい
   - `bench.txt`（ベンチのメッセージ・エラー）
+  - `<host>/resources.json`（ベンチ中のホスト CPU・メモリ・ネットワーク・ディスクと、プロセス別 CPU の1秒ごとの推移）。どのプロセスがどのホストで飽和しているか、CPU が余っているかを見る
   - 前回ベンチの `summary.md` と比べると、ボトルネックの移り変わりが分かる
 - `$STATE/bench.jsonl`（スコア推移と、予測と実績のギャップ）
 - `$STATE/docs/`（採点ルール、構成）

@@ -12,3 +12,5 @@ BLACKBOX_PATHS=""                    # 過去問リハーサル用: ワーカー
 ACCESS_DIGEST=alp                    # 解析アダプタ (bin/digest/<kind>-<tool>.sh)。ログ形式や DB が合わなければアダプタを足して切り替える
 QUERY_DIGEST=pt
 PROFILE_DIGEST=pprof
+RESOURCES_DIGEST=proc                # bin/sample-resources.sh の出力を変換する
+RESOURCE_SAMPLING=1                  # 0 でベンチ中のリソース取得を止める

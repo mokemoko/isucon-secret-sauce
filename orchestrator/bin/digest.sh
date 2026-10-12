@@ -4,6 +4,7 @@
 #   <host>/endpoints.json : [{method, uri, count, status:{1xx..5xx}, sum, avg, max, p90, p95, p99, body_sum, body_avg}] 秒・sum 降順
 #   <host>/queries.json   : [{fingerprint, count, sum, avg, p95, max, rows_examined_avg, rows_sent_avg, sample}] 秒・sum 降順
 #   <host>/profile.json   : {duration, samples, flat:[{func, flat, flat_pct, cum, cum_pct}], cum:[...]} 秒
+#   <host>/resources.json : {ncpu, t:[秒], host:{user,sys,iowait,steal,mem (%), rx,tx,rd,wr (B/s)}, procs:[{comm, cpu:[%/1コア], rss:[MB], cpu_avg, cpu_max, rss_max}]}
 #   summary.md            : 上記の上位だけを詰めたテキスト (AI はまずこれを読む)
 # 変換は bin/digest/<kind>-<tool>.sh (引数 <入力> <元の出力の保存先>、stdout にスキーマ JSON)。
 # ツールは env.sh の ACCESS_DIGEST / QUERY_DIGEST / PROFILE_DIGEST で選ぶ。別のツール (pgBadger 等) が要るならアダプタを1本足す
@@ -11,7 +12,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 set -a; . "${ENV_FILE:-./env.sh}"; set +a
 dir=$1 result=${2:-}
-ACCESS_DIGEST=${ACCESS_DIGEST:-alp} QUERY_DIGEST=${QUERY_DIGEST:-pt} PROFILE_DIGEST=${PROFILE_DIGEST:-pprof}
+ACCESS_DIGEST=${ACCESS_DIGEST:-alp} QUERY_DIGEST=${QUERY_DIGEST:-pt} PROFILE_DIGEST=${PROFILE_DIGEST:-pprof} RESOURCES_DIGEST=${RESOURCES_DIGEST:-proc}
 
 # 失敗しても他の変換とベンチ台帳は止めない。理由は digest.err に残す
 run() { # kind tool input json raw
@@ -22,6 +23,7 @@ run() { # kind tool input json raw
 }
 for f in "$dir"/*/access.log; do [ -s "$f" ] && run access "$ACCESS_DIGEST" "$f" "${f%/*}/endpoints.json" "${f%.log}.alp.txt"; done
 for f in "$dir"/*/*slow*.log; do [ -s "$f" ] && run query "$QUERY_DIGEST" "$f" "${f%/*}/queries.json" "${f%.log}.pt.txt"; done
+for f in "$dir"/*/resources.raw; do [ -s "$f" ] && run resources "$RESOURCES_DIGEST" "$f" "${f%/*}/resources.json" "${f%/*}/resources.txt"; done
 for f in "$dir"/*/cpu.pprof; do [ -s "$f" ] && run profile "$PROFILE_DIGEST" "$f" "${f%/*}/profile.json" "${f%/*}/pprof.txt"; done
 
 {
@@ -48,6 +50,15 @@ for f in "$dir"/*/cpu.pprof; do [ -s "$f" ] && run profile "$PROFILE_DIGEST" "$f
     echo; jq -r '"## cpu profile \(input_filename | split("/")[-2]) samples=\(.samples)s / \(.duration)s",
       "flat% cum% func (flat 上位)", (.flat[0:12][] | "\(.flat_pct)% \(.cum_pct)% \(.func)"),
       "flat% cum% func (cum 上位のうちアプリの main パッケージ)", (.cum | map(select(.func | startswith("main."))) | .[0:10][] | "\(.flat_pct)% \(.cum_pct)% \(.func)")' "$f"
+  done
+  for f in "$dir"/*/resources.json; do
+    [ -f "$f" ] || continue
+    echo; jq -r 'def avg: if length > 0 then add / length else 0 end; def r: . * 10 | round / 10;
+      ([.host.user, .host.sys] | transpose | map(add)) as $busy |
+      "## resources \(input_filename | split("/")[-2]) ncpu=\(.ncpu) \(.t | length)s",
+      "host cpu(user+sys) avg=\($busy | avg | r)% max=\($busy | max // 0 | r)% iowait avg=\(.host.iowait | avg | r)% steal avg=\(.host.steal | avg | r)% mem max=\(.host.mem | max // 0 | r)%",
+      "net rx/tx avg=\(.host.rx | avg / 1048576 | r)/\(.host.tx | avg / 1048576 | r)MB/s disk rd/wr avg=\(.host.rd | avg / 1048576 | r)/\(.host.wr | avg / 1048576 | r)MB/s",
+      "cpu_avg% cpu_max% rss_max_MB comm (1コア=100%)", (.procs[0:8][] | "\(.cpu_avg) \(.cpu_max) \(.rss_max | round) \(.comm)")' "$f"
   done
   if [ -s "$dir/digest.err" ]; then echo; echo "## digest errors"; cat "$dir/digest.err"; fi
 } >"$dir/summary.md"

@@ -27,6 +27,14 @@ for h in $HOSTS; do
   ssh "$h" "for f in $LOG_FILES; do sudo test -f \$f && sudo truncate -s0 \$f; done; true"
 done
 
+# ベンチ中のリソース推移 (各ホストで1秒ごとに /proc を読む)。ベンチ後に ssh を kill して止める
+sampler_pids=
+if [ "${RESOURCE_SAMPLING:-1}" = 1 ]; then
+  for h in $HOSTS; do
+    mkdir -p "$dir/$h"
+    ssh "$h" "SAMPLER_ID=$id timeout 1800 bash -s" <bin/sample-resources.sh >"$dir/$h/resources.raw" 2>/dev/null & sampler_pids="$sampler_pids $!"
+  done
+fi
 pprof_pids=
 if [ -n "$PPROF_URL" ]; then
   for h in ${PPROF_HOSTS:-$APP_HOST}; do
@@ -41,6 +49,10 @@ else
   result='{"pass":false,"score":0,"error":"bench command failed"}'
 fi
 for p in $pprof_pids; do wait "$p" || true; done
+if [ -n "$sampler_pids" ]; then
+  for h in $HOSTS; do ssh "$h" "f=/tmp/isu-sampler-$id.pid; [ -f \$f ] && kill \$(cat \$f)" 2>/dev/null || true; done
+  for p in $sampler_pids; do kill "$p" 2>/dev/null || true; wait "$p" 2>/dev/null || true; done
+fi
 
 for h in $HOSTS; do
   mkdir -p "$dir/$h"

@@ -17,7 +17,7 @@
 | 20 | [リハ#2] zsh の配列が1始まりで、Coordinator のタスク登録ループの表示名がずれた | done |
 | 21 | [リハ#2] PROBE_URLS が空だと restart-check.sh が再起動完了を待たずにベンチを走らせる | done |
 | 22 | [リハ#2] Implementer が他の worktree のローカル環境に initialize を誤送信する | done |
-| 23 | [リハ#2] EC2 の停止・再開で IP が変わり、複数の設定ファイルを手で直す必要がある | todo |
+| 23 | [リハ#2] EC2 の停止・再開で IP が変わり、複数の設定ファイルを手で直す必要がある | done |
 | 24 | [リハ#2] 終盤にスコアが漂流し、採否判定がノイズに振られた | done |
 | 25 | [リハ#2] ローカルの docker イメージ・ボリュームが終了後に残る | done |
 | 26 | ダッシュボードのタスクのステータス・並び順が分かりづらい | done |
@@ -87,6 +87,7 @@
 - 現象：一時停止のため EC2 を stop → start したらパブリック IP が変わった。ssh が実際に読むのは `~/isucon/ssh_config`（up.sh が書く `~/isucon/rehearsal/ssh_config` の写し）で、Coordinator が後者だけ直して接続できず数分空費した。queue.sh の「待ち分」も停止時間で膨らみ、順位が待ち時間順になった
 - 影響：再開が遅れる。列の順位が意味を失う
 - その場の回避策：`~/isucon/ssh_config`・`rehearsal/ssh_config`・`state/docs/hosts.txt` の3つを直した。列は優先度順で手動選択。up.sh で Elastic IP を付けるか、ssh_config を1か所（Include 先）だけにする。queue.sh は一時停止中の時間を待ち分から除く
+- 対応（done）：リハーサル専用の `rehearsal/pause.sh stop|start` を足した。start で新しい IP を ssh_config 2か所と hosts.txt に反映し、マージ待ちの ready_at を停止していた分だけ進める（本番は止めないので orchestrator 本体は変えない）
 
 ## 24. [リハ#2] 終盤にスコアが漂流し、採否判定がノイズに振られた
 - 現象：matcher 内製化の再起動確認で 15290（012418、再起動直後）→ 以後 11346・10776・11041 と下がった。apprides（10776）は基準（ベスト×0.74=11315）割れで revert したが、revert 後の main も 11041 で、apprides 由来ではなかった可能性が高い。t3a のCPUクレジット、再起動直後かどうか（再起動確認のスコアが高めに出る傾向: 15290）などが疑われるが未検証

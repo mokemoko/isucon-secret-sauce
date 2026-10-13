@@ -194,12 +194,16 @@ const LANES = [
   ["pending", "依存待ち", "先行タスクの完了を待っている"],
   ["ready", "着手待ち", "着手できるが、ワーカーの空きを待っている"],
   ["running", "実行中", "ワーカーが作業中"],
-  ["blocked", "判断待ち", "人間の判断（ゲート）を待っている"],
+  ["gate", "判断待ち", "人間の判断（未回答のゲート）を待っている"],
+  ["blocked", "中断", "ワーカーが停止・失敗して止まっている（ゲートは無い）。Coordinator の再投入か取り下げを待つ"],
   ["merge", "マージ待ち", "実装済み。ベンチの枠を待っている"],
   ["completed", "完了", "マージ・ベンチ済み、または調査タスクの完了"],
   ["failed", "失敗", ""],
 ];
+// Orca の blocked は「未回答のゲートがある」場合と「ワーカーが停止・失敗した」場合の両方を含む
+const gated = id => (state?.gates || []).some(g => g.task_id === id);
 const lane = t => t.status === "completed" && mergeIds.has(t.id) ? "merge"
+  : t.status === "blocked" && gated(t.id) ? "gate"
   : ["dispatched", "running"].includes(t.status) ? "running" : t.status;
 function renderTasks(tasks) {
   if (!tasks) { $("tasks").innerHTML = '<span class="muted">-</span>'; return; }

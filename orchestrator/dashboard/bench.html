@@ -242,7 +242,7 @@ async function main() {
     if (v) $(k).href = "?id=" + encodeURIComponent(v.id); else $(k).classList.add("muted");
   }
   let html = `<section><div>${esc(r.note)}${r.restart_check ? ' <span class="tag">再起動確認</span>' : ""}</div>
-    <div class="muted">sha ${esc((r.sha || "").slice(0, 10))}${r.task ? ` · task ${esc(r.task)}` : ""}${r.predicted != null ? ` · ローカル予測 ${r.predicted > 0 ? "+" : ""}${r.predicted}%` : ""}${r.error ? ` · ${esc(r.error)}` : ""}
+    <div class="muted">sha ${esc((r.sha || "").slice(0, 10))}${r.task ? ` · task ${esc(r.task)}` : ""}${r.error ? ` · ${esc(r.error)}` : ""}
     · 比較対象 ${p ? `<a href="?id=${encodeURIComponent(p.id)}">${esc(p.id)}</a>` : "なし"}</div></section>`;
   html += messages(r);
   html += panel("AI 向け要約 (summary.md)", `<p class="muted">Analyst・Coordinator が最初に読む要約。「元の出力」で表示</p>`, `/state/analysis/${id}/summary.md`);

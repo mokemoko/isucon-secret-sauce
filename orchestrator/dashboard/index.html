@@ -248,7 +248,6 @@ function renderGates(gates) {
   if (open) $("gates").querySelector(`.gate[data-id="${CSS.escape(open)}"] input`)?.focus();
 }
 
-// 最新ベンチの summary.md をそのまま出す。表と元の出力はベンチ詳細ページで見る
 function renderQueue(r) {
   if (!r || !r.queue?.length) { $("queue").innerHTML = '<tr><td class="muted">なし</td></tr>'; return; }
   $("queue").innerHTML = `<tr><th class="num">#</th><th class="num">優先度<br>度×確信</th><th class="num">待ち</th><th>タスク</th></tr>` +
@@ -257,6 +256,7 @@ function renderQueue(r) {
     `<tr><td colspan="4" class="muted" style="white-space:normal">基準ベンチ ${esc(r.bench || "なし")} · ${hms(new Date(r.ranked_at * 1000).toISOString())} 時点 · ⏱ = 20分以上待ち（先頭に出す） · 📦 = 次のベンチでまとめて適用</td></tr>`;
 }
 
+// 最新ベンチの summary.md をそのまま出す。表と元の出力はベンチ詳細ページで見る
 async function renderAnalysis(id) {
   if (!id || $("previews").dataset.key === id) return;
   $("previews").dataset.key = id;

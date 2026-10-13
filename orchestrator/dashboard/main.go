@@ -87,22 +87,18 @@ func handleState(w http.ResponseWriter, r *http.Request) {
 		res["analysis"] = map[string]any{"id": last.ID}
 	}
 
-	if *runID != "" {
-		for key, args := range map[string][]string{
-			"tasks": {"orchestration", "task-list", "--run", *runID},
-			"gates": {"orchestration", "gate-list", "--run", *runID, "--status", "pending"},
-		} {
-			raw, err := orca(args...)
-			if err != nil {
-				errs = append(errs, key+": "+err.Error())
-				continue
-			}
-			var m map[string]json.RawMessage
-			json.Unmarshal(raw, &m)
-			res[key] = m[key]
+	for key, args := range map[string][]string{
+		"tasks": {"orchestration", "task-list", "--run", *runID},
+		"gates": {"orchestration", "gate-list", "--run", *runID, "--status", "pending"},
+	} {
+		raw, err := orca(args...)
+		if err != nil {
+			errs = append(errs, key+": "+err.Error())
+			continue
 		}
-	} else {
-		errs = append(errs, "-run 未指定: タスク・ゲートは表示されません")
+		var m map[string]json.RawMessage
+		json.Unmarshal(raw, &m)
+		res[key] = m[key]
 	}
 	res["errors"] = errs
 	w.Header().Set("Content-Type", "application/json")
@@ -199,8 +195,8 @@ func main() {
 	// Coordinator は check --wait --types に status を含めること
 	http.HandleFunc("/api/hint", post(func(b map[string]string) ([]string, error) {
 		text := strings.TrimSpace(b["text"])
-		if text == "" || *runID == "" {
-			return nil, errBad("text と -run が必要です")
+		if text == "" {
+			return nil, errBad("text が必要です")
 		}
 		return []string{"orchestration", "send", "--to", "run:" + *runID, "--type", "status", "--priority", "high",
 			"--subject", "[human] " + b["who"], "--body", text}, nil
@@ -208,8 +204,8 @@ func main() {
 	// gate-resolve は呼び出し元の Run に束縛されていて外部プロセスからは実行できないため、
 	// 回答をメッセージで送り、Coordinator 自身に gate-resolve させる
 	http.HandleFunc("/api/gate", post(func(b map[string]string) ([]string, error) {
-		if b["id"] == "" || b["resolution"] == "" || *runID == "" {
-			return nil, errBad("id, resolution と -run が必要です")
+		if b["id"] == "" || b["resolution"] == "" {
+			return nil, errBad("id と resolution が必要です")
 		}
 		return []string{"orchestration", "send", "--to", "run:" + *runID, "--type", "status", "--priority", "high",
 			"--subject", "[human-gate] " + b["id"], "--body", b["resolution"]}, nil

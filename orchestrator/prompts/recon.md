@@ -62,8 +62,7 @@
 - compose ファイルは競技リポジトリの `local/compose.yml` に置く
 - worktree ごとに並列起動できるよう、project 名とポートは `local/.env` から読む（compose が自動で読む）。`$ORC/bin/local-env.sh <name>` が `COMPOSE_PROJECT_NAME`・`LOCAL_PORT`（nginx）・`LOCAL_DB_PORT`（DB）・`LOCAL_EXTRA_PORT` を worktree ごとに重ならない値で書く。compose 側は `127.0.0.1:${LOCAL_PORT}:80` のように参照する
 - 公開ポートは `127.0.0.1` にだけバインドする。ダッシュボードが使う 9180 番は避ける（local-env.sh は 20000 番台以上を使う）
-- 起動、初期化、停止のコマンドを local.md に書く。**ポート番号を直書きしない**。各コマンドは `. local/.env &&` で始め、`$LOCAL_PORT` などを使う（Bash の呼び出しごとにシェルが新しくなり、export は残らない。直書きの番号を写したワーカーが、他の worktree の環境に initialize を送った）
-- 停止は `docker compose -f local/compose.yml down -v --rmi local`（ビルドしたイメージも消す。残すと Mac のディスクを圧迫する）
+- 起動、初期化、停止のコマンドを local.md に書く。common.md の「ローカル環境」の形（`. local/.env &&` で始め、ポートは変数）にする
 
 ### appmap：アプリ仕様の読解 → `$STATE/docs/app-map.md`
 - エンドポイント一覧（メソッド、パス、処理概要、触るテーブル）

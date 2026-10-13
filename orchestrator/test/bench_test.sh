@@ -31,12 +31,12 @@ export ENV_FILE="$t/env.sh" STATE="$t/state"
 printf '#!/bin/sh\necho progress\necho %s\n' "'{\"pass\":true,\"score\":1234}'" >"$t/bin/fakebench"; chmod +x "$t/bin/fakebench"
 
 # 1) 成功ケース
-TASK=t1 PREDICTED=12.5 "$root/bin/bench.sh" origin/main first >/dev/null
+TASK=t1 "$root/bin/bench.sh" origin/main first >/dev/null
 line=$(tail -n1 "$STATE/bench.jsonl")
 [ "$(echo "$line" | jq -r .score)" = 1234 ] || { echo "FAIL score: $line"; exit 1; }
 [ "$(echo "$line" | jq -r .sha)" = "$sha" ] || { echo "FAIL sha: $line"; exit 1; }
 [ "$(echo "$line" | jq -r .note)" = first ] || { echo "FAIL note: $line"; exit 1; }
-[ "$(echo "$line" | jq -c "[.task,.predicted]")" = '["t1",12.5]' ] || { echo "FAIL prediction: $line"; exit 1; }
+[ "$(echo "$line" | jq -r .task)" = t1 ] || { echo "FAIL task: $line"; exit 1; }
 id=$(echo "$line" | jq -r .id)
 [ -f "$STATE/analysis/$id/h1/access.log" ] && [ ! -s "$STATE/analysis/$id/h1/access.log" ] || { echo "FAIL log not truncated/collected"; exit 1; }
 [ ! -e "$STATE/analysis/$id/h1/missing-slow.log" ] || { echo "FAIL missing log should be skipped"; exit 1; }

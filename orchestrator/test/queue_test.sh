@@ -16,7 +16,7 @@ J
 q=$root/bin/queue.sh
 $q add '{"task_id":"a","title":"index","expected_gain":"high","targets":[{"method":"GET","uri":"/"}]}' >/dev/null   # 0.6 × 1
 $q add '{"task_id":"b","title":"img","expected_gain":"high","targets":[{"uri":"/img"}]}' >/dev/null                   # 0.4×0.3=0.12 × 1
-$q add '{"task_id":"c","title":"comments","expected_gain":"mid","predicted":20,"targets":[{"query":"from `comments`"}]}' >/dev/null # 0.3 × 0.6 = 0.18 (predicted は使わない)
+$q add '{"task_id":"c","title":"comments","expected_gain":"mid","targets":[{"query":"from `comments`"}]}' >/dev/null # 0.3 × 0.6 = 0.18
 $q add '{"task_id":"d","title":"none","expected_gain":"low"}' >/dev/null                                              # 0.3 × 0.3
 out=$($q rank)
 echo "$out" | head -1 | grep -q '基準ベンチ: b2' || { echo "FAIL base bench: $out"; exit 1; }

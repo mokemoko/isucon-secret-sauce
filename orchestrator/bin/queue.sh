@@ -10,8 +10,7 @@
 #     query {query}: fingerprint にその文字列を含む (大小無視) クエリの合計時間の、全エンドポイントの合計時間に対する割合
 #       (エンドポイントと同じ分母にして比べられるようにする。エンドポイントのデータが無ければ全クエリ時間で割る)
 #     targets が無い・データが無いときは 0.3
-#   確信度: expected_gain (high 1 / mid 0.6 / low 0.3)。ローカル予測 (predicted) は使わない
-#     (リハ#2: 負荷が固定のローカルベンチでは予測の大半が ±1% に固まり符号も外れた。predicted は台帳に参考値として残る)
+#   確信度: expected_gain (high 1 / mid 0.6 / low 0.3)。ローカルベンチの予測は使わない (負荷が固定で、順位付けに使えなかった。リハ#2)
 #   AGE_MIN 分 (既定 20) 以上待ったものは優先度に関係なく先頭へ (古い順)
 # まとめて適用 (.batch): 先頭が batchable かつ restart_risk でなければ、同じ条件で area が重ならないものを
 #   順位順に BATCH_MAX 件 (既定 3) まで足す。先頭が batchable でなければ先頭だけ (効果を単独で測る)
@@ -43,8 +42,7 @@ case ${1:-} in
         def r2: . * 100 | round / 100;
       map(
         ([(.targets // [])[] | if .query then qshare(.) else eshare(.) end] | max // null) as $deg
-        | ({"high": 1, "mid": 0.6, "low": 0.3}[.expected_gain // ""] // 0.5) as $g
-        | $g as $conf
+        | ({"high": 1, "mid": 0.6, "low": 0.3}[.expected_gain // ""] // 0.5) as $conf
         | (if $deg == null or ($et == 0 and $qt == 0) then 0.3 else $deg end) as $degree
         | ((($now - .ready_at) / 60) | floor) as $wait
         | . + {degree: ($degree | r2), confidence: ($conf | r2), priority: ($degree * $conf | r2), wait_min: $wait, aged: ($wait >= $age)})

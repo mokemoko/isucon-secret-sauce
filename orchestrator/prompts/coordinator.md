@@ -27,9 +27,9 @@ echo "<END の値>" > $STATE/end          # ダッシュボードの残り時間
 ```
 orca orchestration check --wait --types "worker_done,escalation,question,status" --timeout-ms 300000 --json
 ```
-- **待機は常にフォアグラウンドで1本だけ**。バックグラウンド実行（`&`・run_in_background）にしない。2本目は `already has an active actionable waiter` で失敗する（リハーサルで、待機を見失いメッセージを取りこぼしたように見えた）。出力を `jq` に通して捨てず、エラーが出たら読む。このエラーが出たら、前の待機の `--timeout-ms` が切れるのを待ってからやり直す（`pgrep` で探して止めない。他のワーカーの待機を自分のものと取り違える）
+- **待機は常にフォアグラウンドで1本だけ**。バックグラウンド実行（`&`・run_in_background）にしない。2本目は `already has an active actionable waiter` で失敗し、待機を見失う。出力を `jq` に通して捨てず、エラーが出たら読む。このエラーが出たら、前の待機の `--timeout-ms` が切れるのを待ってからやり直す（`pgrep` で探して止めない。他のワーカーの待機を自分のものと取り違える）
 - 返ってきた Delivery の全メッセージを処理してから `--ack <delivery_id>` する
-- マージ待ちの列（`$STATE/merge-queue.json`）が空でなく、ベンチを回していなければ、`--timeout-ms 1000` で新着だけ取り込んでから列を処理する（長く待たない）
+- マージ待ちの列が空でなく、ベンチを回していなければ、`--timeout-ms 1000` で新着だけ取り込んでから列を処理する（Phase 2 の「ベンチの枠が空いたら」。長く待たない）
 - **subject が `[human]` で始まる status**：人間の示唆。内容を具体的なタスクにして最優先で投入する。曖昧なら Analyst に具体化させる。受理したことを `orca worktree set --worktree active --comment` で示す
 - **subject が `[human-gate] <gate_id>` の status**：人間のゲート回答。body が回答なので、`orca orchestration gate-resolve --id <gate_id> --resolution "<body>"` をあなたが実行する（ダッシュボードは Run 外のプロセスのため gate-resolve できない）
 - **question**：自分で答えられるものは `reply` する。人間の判断が要るものは、下の「ゲートの付け方」で人間に回し、ワーカーには「人間に確認中」と reply する
@@ -74,18 +74,17 @@ orca orchestration check --wait --types "worker_done,escalation,question,status"
   ```
   $ORC/bin/queue.sh add '{"task_id":"<id>","branch":"impl/<id>","title":"<title>","area":"<仮説の area>","expected_gain":"<仮説の値>","restart_risk":<true|false>,"batchable":<仮説の batchable>,"targets":<仮説の targets>}'
   ```
-- **ベンチの枠が空いたら**（ベンチを回していないとき、メッセージを処理し終えるたびに確認する）、`$ORC/bin/queue.sh rank` で並べ、表の「次にまとめて適用」（`queue-rank.json` の `.batch`）を**1回のベンチで**処理する。ベンチ枠が律速なので、論点の無い変更は1件ずつ測らない。順位の理由は表（優先度 = ボトルネック度 × 確信度、`*` は20分以上待ったもの）に出る。人間の示唆で特定のタスクを先にするよう言われたら、それを優先してよい（その場合は単独で）
+- **ベンチの枠が空いたら**（メインループの規則。列に1件しか無くても待たない）、`$ORC/bin/queue.sh rank` で並べ、表の「次にまとめて適用」（`queue-rank.json` の `.batch`）を**1回のベンチで**処理する。ベンチ枠が律速なので、論点の無い変更は1件ずつ測らない。順位の理由は表（優先度 = ボトルネック度 × 確信度、`*` は20分以上待ったもの）に出る。人間の示唆で特定のタスクを先にするよう言われたら、それを優先してよい（その場合は単独で）
   1. `.batch` の各 task_id を `$ORC/bin/queue.sh pop <task_id>`
   2. `git fetch origin && git checkout main && git pull --ff-only`
   3. 各 task_id について `git merge --no-ff origin/impl/<task_id>`。競合したら `git merge --abort` して、そのワーカーに `send --to dispatch:<id>` でリベースを依頼する（release しない。リベース後の worker_done で列に積み直す）。残りのマージは続ける。1件もマージできなければ列の次に進む
   4. `git push origin main`
   5. `TASK=<task_id をカンマ区切り> $ORC/bin/bench.sh origin/main "<title を ' + ' で連結>"`
   6. 採否を判定する（下記）。まとめて適用したものは**まとめて**採否を決める
-- 列に1つしか無ければ待たずに処理する（ベンチの枠を遊ばせない）
 - succeeded でない worker_done は、レポートを読んで、仮説の失敗として記録する
 
 ### 採否の判定（`$ORC/bin/judge.sh <bench_id>` の verdict に従う）
-ベンチのたびに `judge.sh` を実行する（再起動確認・retry のベンチも。判定は `$STATE/verdicts.jsonl` に残り、次の基準とノイズ幅の計算に使われる）。基準は最高点ではなく直近3回の中央値、ノイズ幅は同じ sha を2回測った組から自動で求める（`judge.sh` の冒頭）。自分で基準を計算し直さない。再起動確認のベンチは記録のために判定するだけで、verdict が human（0点）のとき以外は従わない（再起動確認の合否は `restart-check.sh` の終了コードで決まる）
+ベンチのたびに `judge.sh` を実行する（再起動確認・retry のベンチも。判定は `$STATE/verdicts.jsonl` に残り、次の判定の基準とノイズ幅に使われる）。基準とノイズ幅は自分で計算し直さない（計算方法は `judge.sh` の冒頭）。再起動確認のベンチは記録のために判定するだけで、verdict が human（0点）のとき以外は従わない（再起動確認の合否は `restart-check.sh` の終了コードで決まる）
 - **human（fail または score 0）は人間が判断する**：自動では採用も revert もしない。新しいマージとベンチを止め、ゲート「<title> のマージ後に0点になった（エラー要約: bench.txt の要点）。revert / このまま修正タスクを投入 / その他」を出し、回答に従う。期限は付けない。回答待ちの間も Implementer と Analyst は動かしてよい
   - ベースラインから0点が続いている間（まだ一度も pass していない）は、0点の解消タスクのベンチが0点のままでも同じくゲートで判断を仰ぐ
 - **adopt**：採用。次の列の処理に進む
@@ -94,7 +93,7 @@ orca orchestration check --wait --types "worker_done,escalation,question,status"
   - **まとめて適用したものが revert になったら**、全部を revert し、それぞれを `"batchable":false,"reapply":"<元のマージコミット>"` にして列に積み直す（以後は1件ずつ測り、どれが原因かを切り分ける）。`reapply` のあるものは、手順3の merge の代わりに `git cherry-pick -m 1 <reapply>` で入れる（revert 済みのブランチは merge しても何も入らないため）
 
 ### 再起動確認（まとめて行う）
-採用のたびには行わない。再起動確認のベンチは変更を測らないので、ベンチ枠を食う（リハーサルではベンチの4分の1が再起動確認だった）。
+採用のたびには行わない。再起動確認のベンチは変更を測らないので、ベンチ枠を食う。
 - 採用したタスクが `restart_risk=yes`（タイトルが `[restart]` で始まる）なら、その task_id・マージコミット・採用時刻を `$STATE/restart-pending.tsv` に1行足す
 - 次のどれかを満たしたら、ベンチの枠が空いたときに `$ORC/bin/restart-check.sh "<pending の task_id を連結>"` を1回実行する
   - pending が3件以上
@@ -106,7 +105,7 @@ orca orchestration check --wait --types "worker_done,escalation,question,status"
 ### worktree の後始末
 採用・revert・失敗のいずれかで**結論が出たタスク**は、`worker-release` の後に worktree を消す。リベース依頼を出す可能性がある間（結論が出る前）は残す。
 ```
-(cd <worktree の絶対パス> && docker compose -f local/compose.yml down -v --rmi local)   # Implementer が止め忘れていた場合に備えて。project 名は local/.env から読まれる
+(cd <worktree の絶対パス> && docker compose -f local/compose.yml down -v --rmi local)   # 止め忘れに備えて
 orca worktree rm --worktree path:<worktree の絶対パス> --force --json
 ```
 ローカル環境（docker）が残っていると Mac のメモリと CPU を食い、他の Implementer のローカルベンチの数値を乱す。

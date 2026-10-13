@@ -33,10 +33,15 @@ Coordinator から Orca orchestration 経由でタスクを受け取り、完了
 - 使ってよいのは、ベンチの出力（`analysis/<id>/bench.txt`）、当日マニュアル、アクセスログなどサーバ側で観測できる情報だけ
 - 再起動後もアプリが動き、ベンチで書き込まれたデータが残ること
 
+## ローカル環境（docker compose、worktree ごとに並列で動く）
+- 最初に worktree の直下で `$ORC/bin/local-env.sh <worktree 名>` を1回実行する。project 名とポートが `local/.env` に固定される（compose が自動で読む）
+- コマンドは毎回 `. local/.env &&` で始め、`http://127.0.0.1:$LOCAL_PORT` のように変数で使う。**ポート番号を直書きしない・他の worktree の環境に送らない**（Bash の呼び出しごとにシェルが新しくなり export は残らない）
+- 止めるときは `docker compose -f local/compose.yml down -v --rmi local`（ビルドしたイメージも消す）
+
 ## 作業ルール
 - 本番サーバへの変更は **git 経由のみ**（`$ORC/bin/bench.sh` が deploy する）。サーバ上で直接ファイルを編集・再起動しない。調査目的の読み取り（ssh でのコマンド実行、ログ閲覧）は可
 - 本番ベンチを自分で回さない。ベンチは Coordinator が直列で回す
 - 判断に迷ったら preamble の `ask` で Coordinator に聞く。ローカルで質問 UI を開かない
-- シェルは zsh。**zsh は未クオートの `$var` を単語分割しない**ため、`ids="a b"; cmd $ids` は1引数 `"a b"` として渡る（リハーサルで依存なしのタスクができ、worker-start も失敗した）。複数の値は配列（`ids=(a b); cmd $ids`）にするか、`${=ids}` で展開する。**zsh の配列の添字は1始まり**（`ids[1]` が先頭。0始まりのつもりで書くと1件ずつずれる）。orca の `--deps` などのリストは、変数を介さず値を直接書くのが確実
-- **`bash -c` / `sh -c` / `eval` でコマンドを包まない**。Claude Code が中身を検査できず、人間の承認待ちで止まる（無人なら自動で拒否される。リハーサルで Coordinator のタスク一括登録が止まった）。複数件の登録のような長い処理も包まずに、zsh のまま1件ずつ（または短いコマンドに分けて）実行する
+- シェルは zsh。**zsh は未クオートの `$var` を単語分割しない**ため、`ids="a b"; cmd $ids` は1引数 `"a b"` として渡る。複数の値は配列（`ids=(a b); cmd $ids`）にするか、`${=ids}` で展開する。**zsh の配列の添字は1始まり**（`ids[1]` が先頭。0始まりのつもりで書くと1件ずつずれる）。orca の `--deps` などのリストは、変数を介さず値を直接書くのが確実
+- **`bash -c` / `sh -c` / `eval` でコマンドを包まない**。Claude Code が中身を検査できず、人間の承認待ちで止まる（無人なら自動で拒否される）。複数件の登録のような長い処理も包まずに、zsh のまま1件ずつ（または短いコマンドに分けて）実行する
 - worker_done の要約は3文以内。詳細は `$STATE/reports/` にファイルで残して `--report-path` で渡す

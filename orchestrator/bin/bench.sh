@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # usage: bin/bench.sh [ref=origin/main] [note]
 # 直列 bench lane: deploy → ログ truncate → bench (+pprof) → ログ回収・bin/digest.sh で解析 → state/bench.jsonl に1行追記
-# TASK=<orca task id> PREDICTED=<ローカル軽量ベンチでの改善率 %> を渡すと台帳に残り、予測と実績のギャップ分析に使う
+# TASK=<orca task id (カンマ区切り可)> を渡すと台帳に残る
 # SKIP_DEPLOY=1 で deploy を飛ばす (再起動確認用。deploy の service restart が起動確認を潰すため)
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -74,6 +74,5 @@ done
 bin/digest.sh "$dir" "$result" || true
 
 jq -cn --arg id "$id" --arg ts "$(date -u +%FT%TZ)" --arg sha "$sha" --arg note "$note" \
-  --arg restart "${SKIP_DEPLOY:-0}" --arg task "${TASK:-}" --arg pred "${PREDICTED:-}" --argjson r "$result" \
-  '{id:$id, ts:$ts, sha:$sha, note:$note, restart_check:($restart=="1"), task:$task,
-    predicted:(if $pred=="" then null else ($pred|tonumber) end)} + $r' | tee -a "$STATE/bench.jsonl"
+  --arg restart "${SKIP_DEPLOY:-0}" --arg task "${TASK:-}" --argjson r "$result" \
+  '{id:$id, ts:$ts, sha:$sha, note:$note, restart_check:($restart=="1"), task:$task} + $r' | tee -a "$STATE/bench.jsonl"

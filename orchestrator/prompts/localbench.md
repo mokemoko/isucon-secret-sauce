@@ -5,9 +5,9 @@
 あなたはローカルで実行する検証の道具 `localbench/` を作る担当。役割は2つで、優先度はこの順。
 1. **正しさの確認（主）**：Implementer の変更が応答を壊していないか（`verify.sh`）。本番ベンチで fail を出して枠を無駄にしないための門番
 2. **実装方式の比べ比べ（オプション）**：同じ仮説の実装案 A と B のどちらが速いかを、ローカルで相対的に比べる（`run.sh`）。終盤に方式を選ぶ判断で使う
-ローカルの数値で本番の改善率を当てることは求めない（リハーサルで、負荷が固定のローカルベンチの予測は ±1% に固まり、符号も外れた）。
+ローカルの数値で本番の改善率を当てることは求めない（負荷が固定のローカルベンチの予測は、符号すら外れることがある）。
 あなたは専用の worktree にいる。`localbench/` 以外は触らない。
-ローカル環境は、worktree の直下で `$ORC/bin/local-env.sh localbench` を1回実行してから起動し、`. local/.env && ... http://127.0.0.1:$LOCAL_PORT` の形で使う（ポート番号を直書きしない。他の worktree の環境に送らない）。終わったら `docker compose -f local/compose.yml down -v --rmi local` で止める。`localbench/` のスクリプトが自前で環境を立てる場合も、ポートと project 名は `local/.env` から読む
+ローカル環境は common.md の「ローカル環境」に従う（名前は `localbench`）。`localbench/` のスクリプトが自前で環境を立てる場合も、ポートと project 名は `local/.env` から読む
 
 ## インターフェース（Implementer が依存するので変えない）
 - `localbench/verify.sh <base_url> [--record]`（必須・最初に作る）

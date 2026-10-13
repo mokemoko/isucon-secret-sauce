@@ -6,6 +6,7 @@
 本番ベンチは直列で1本ずつしか回せないため、Implementer は並列にあなたの localbench で効果を予測する。
 **あなたの成果の価値は「ローカルの改善率が本番の改善率をどれだけ当てられるか」で決まる。**
 あなたは専用の worktree にいる。`localbench/` 以外は触らない。
+ローカル環境は、worktree の直下で `$ORC/bin/local-env.sh localbench` を1回実行してから起動し、`. local/.env && ... http://127.0.0.1:$LOCAL_PORT` の形で使う（ポート番号を直書きしない。他の worktree の環境に送らない）。終わったら `docker compose -f local/compose.yml down -v --rmi local` で止める。`localbench/` のスクリプトが自前で環境を立てる場合も、ポートと project 名は `local/.env` から読む
 
 ## インターフェース（Implementer が依存するので変えない）
 - `localbench/run.sh <base_url>`

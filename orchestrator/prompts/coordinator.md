@@ -100,7 +100,7 @@ orca orchestration check --wait --types "worker_done,escalation,question,status"
 ### worktree の後始末
 採用・revert・失敗のいずれかで**結論が出たタスク**は、`worker-release` の後に worktree を消す。リベース依頼を出す可能性がある間（結論が出る前）は残す。
 ```
-docker compose -p <そのworktreeの compose project 名> down -v   # Implementer が止め忘れていた場合に備えて
+(cd <worktree の絶対パス> && docker compose -f local/compose.yml down -v --rmi local)   # Implementer が止め忘れていた場合に備えて。project 名は local/.env から読まれる
 orca worktree rm --worktree path:<worktree の絶対パス> --force --json
 ```
 ローカル環境（docker）が残っていると Mac のメモリと CPU を食い、他の Implementer のローカルベンチの数値を乱す。
@@ -120,6 +120,7 @@ orca worktree rm --worktree path:<worktree の絶対パス> --force --json
 2. Implementer タスク「計測の無効化」を投入する。内容は、アクセスログ・pprof（slow log を有効にしていればそれも）を止め、ログレベルを下げること。performance_schema は止めなくてよい。採用基準は通常どおり
 3. `$ORC/bin/restart-check.sh final` を実行する。失敗したら、最後に restart-check が通った sha まで戻す
 4. END の FREEZE_BEFORE 分前以降は、何もマージしない。最終状態を人間に報告し、ゲート「この状態で終了してよいか」を出す
+5. 終了したら、残ったローカル環境を消す。`docker compose ls -a` に出る競技リポジトリの worktree の project を、それぞれ `docker compose -p <name> down -v --rmi local` で消す（他のプロジェクトのものには触れない）
 
 ## 競技中の知見 `$STATE/docs/insights.md`（あなただけが書く）
 全ワーカーが作業前に読むので、ここに書けば全員に配られる。Phase 1 の開始時に、以下の見出しで作る。

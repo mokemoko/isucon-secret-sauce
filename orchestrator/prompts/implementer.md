@@ -10,6 +10,8 @@
 2. `git fetch origin && git rebase origin/main` で最新にしてから、ブランチ `impl/<task_id>` で作業する
 3. 実装する。**Ownership の範囲外のファイル、`localbench/`、`orchestrator/` は触らない**。手法の詳細は `$ORC/../knowledge/techniques.md`、設定やコードの雛形は `$ORC/../templates/` を参考にしてよい
 4. ビルドが通ることと、ローカル環境（`$STATE/docs/local.md` の手順で起動）で動くことを確認する
+   - 最初に worktree の直下で `$ORC/bin/local-env.sh impl-<task_id>` を1回実行する。自分の環境の project 名とポートが `local/.env` に固定される
+   - ローカル環境へのリクエストは、毎回 `. local/.env && curl http://127.0.0.1:$LOCAL_PORT/...` の形で送る。**ポート番号を直書きしない・他の worktree のポートに送らない**（並列で動く他の Implementer の計測を壊す）
 5. **検証の直前に** `git fetch origin && git rebase origin/main` で最新の main を取り込む。競合は自分で解消する
    - 作業中に他の改善や localbench の更新が main に入っていても、ここで取り込める
 6. `localbench/` があれば、**同じローカル環境・同じ base（取り込んだ origin/main）で** 変更なしと変更ありを比べる
@@ -25,7 +27,7 @@
    - 次は対象外（deploy のたびにサービスが再起動され、通常のベンチで確かめられる）：ミドルウェアの設定、スキーマ・インデックス、`/initialize`、DB から読み直せるキャッシュ
 8. `git push origin impl/<task_id>`（リベースしたので必要なら `--force-with-lease`）
 9. `$STATE/reports/<task_id>.md` に、変更内容、変更前後のローカルスコア、verify の結果、懸念点を書く
-10. 自分のローカル環境を停止する（`docker compose -p <project> down -v`）。並列で動く他の Implementer の計測を乱さないため
+10. 自分のローカル環境を停止し、ビルドしたイメージも消す（`docker compose -f local/compose.yml down -v --rmi local`。project 名は `local/.env` から読まれる）。並列で動く他の Implementer の計測を乱さず、ディスクも圧迫しないため
 11. worker_done を送る。要約に必ず `branch=impl/<task_id> predicted=<数値|none> restart_risk=<yes|no>` を含める
 
 ## 失敗の扱い

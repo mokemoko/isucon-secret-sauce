@@ -16,10 +16,10 @@
 | 19 | [リハ#2] check --wait を重ねると2本目が「active actionable waiter」で失敗する | todo |
 | 20 | [リハ#2] zsh の配列が1始まりで、Coordinator のタスク登録ループの表示名がずれた | todo |
 | 21 | [リハ#2] PROBE_URLS が空だと restart-check.sh が再起動完了を待たずにベンチを走らせる | done |
-| 22 | [リハ#2] Implementer が他の worktree のローカル環境に initialize を誤送信する | todo |
+| 22 | [リハ#2] Implementer が他の worktree のローカル環境に initialize を誤送信する | done |
 | 23 | [リハ#2] EC2 の停止・再開で IP が変わり、複数の設定ファイルを手で直す必要がある | todo |
 | 24 | [リハ#2] 終盤にスコアが漂流し、採否判定がノイズに振られた | todo |
-| 25 | [リハ#2] ローカルの docker イメージ・ボリュームが終了後に残る | todo |
+| 25 | [リハ#2] ローカルの docker イメージ・ボリュームが終了後に残る | done |
 | 26 | ダッシュボードのタスクのステータス・並び順が分かりづらい | done |
 | 27 | リハ#2 の評価（作業時間の割合、公開解法との比較、自作ベンチの品質） | done |
 | 28 | 序盤のマージ待ちの滞留 | done |
@@ -74,6 +74,8 @@
 - 現象：ownerchairs が isuride-idx（18091）へ、lastloc が isuride-appnotif（18093）へ、それぞれ initialize を1回誤送信した。idx 側では initialize の失敗が1回出た
 - 影響：並列で動く他の Implementer のローカル計測が乱れる。気づかないと誤った予測で採否の順位が狂う
 - その場の回避策：被害側のワーカーに知らせて取り直させた。implementer.md / local.md で、自分のポートを環境変数に固定して使う（他のポートに送らない）ことを明記すべき。ポート割り当てを worktree 名から決める仕組みにすると防げる
+- 原因：local.md の curl の例にポートが直書き（18080）で、worktree ごとの値は `export` で変える方式だった。Bash の呼び出しごとにシェルが新しくなり export が残らないため、ワーカーが番号を手で打ち直して取り違えた
+- 対応（done）：`bin/local-env.sh <name>` が worktree ごとの project 名・ポートを `local/.env` に固定する（compose が自動で読む。name から決め、使用中ならずらす。git の除外に入れる）。recon の local は compose を `local/compose.yml` に置き、ポートを直書きせず `. local/.env &&` で始まるコマンドを書く。implementer.md・localbench.md も同様。`test/local_env_test.sh` を追加
 
 ## 23. [リハ#2] EC2 の停止・再開で IP が変わり、複数の設定ファイルを手で直す必要がある
 - 現象：一時停止のため EC2 を stop → start したらパブリック IP が変わった。ssh が実際に読むのは `~/isucon/ssh_config`（up.sh が書く `~/isucon/rehearsal/ssh_config` の写し）で、Coordinator が後者だけ直して接続できず数分空費した。queue.sh の「待ち分」も停止時間で膨らみ、順位が待ち時間順になった
@@ -89,6 +91,7 @@
 - 現象：終了後、Implementer・localbench が作ったイメージ 43個（`isuride-<task>-app` ×2、`lb-<port>-app`）と匿名ボリューム 20個（mysql のデータ）が残った。コンテナと worktree は消えていた。リハ#1 の `isu-static`・`isu-tmpl`・`isu-lb3` のボリュームも残っていた
 - 影響：Mac のディスクを圧迫する（イメージ1個 0.8〜1GB）
 - 対応案：compose の down に `--rmi local -v` を付けるよう implementer.md・local.md に書く。Coordinator の終了手順に、`docker compose ls` で残ったプロジェクトを消す処理を入れる
+- 対応（done）：停止を `docker compose -f local/compose.yml down -v --rmi local` にした（implementer.md・localbench.md・recon.md・coordinator.md の後始末）。Coordinator の Phase 3 の最後に、`docker compose ls -a` に残った競技リポジトリの project を消す手順を足した
 
 ## 26. ダッシュボードのタスクのステータス・並び順が分かりづらい
 - 現象：ready は「着手待ち」のつもりだが、表示順が dispatched → ready → completed のようになっていて、流れの順に読めない

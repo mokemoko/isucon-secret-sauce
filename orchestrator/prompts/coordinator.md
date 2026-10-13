@@ -50,7 +50,7 @@ orca orchestration check --wait --types "worker_done,escalation,question,status"
 | localbench-init（prompt は localbench.md） | setup | new-top-level |
 
 - manual の worker_done が `STOP:` で始まる場合：ただちに `gate-create` で人間に判断を仰ぎ、解決するまで本番ベンチと自動化を止める
-- setup の完了後：`$ORC/bin/bench.sh origin/main baseline` を2回実行する。スコア差の割合を**ノイズ幅**として `$STATE/noise` に保存する
+- setup の完了後：`$ORC/bin/bench.sh origin/main baseline` を2回実行する。スコア差の割合（|a−b|/大きい方）を `$STATE/noise` に保存する。同じ sha の組がまだ無いうちの、`judge.sh` のノイズ幅の初期値になる
 - ベースライン取得後、人間にゲート「Phase 2 を開始してよいか」を出す。承認されたら Phase 2 へ進む。local と localbench-init の完了は待たない
 - **ベースラインが fail（0点）の場合**：Phase 2 の最初の仕事は「0点の解消」とし、他の改善より最優先にする。Analyst に bench.txt のエラーから原因を特定させ、その Implementer タスクだけを先に流す（他の仮説の Implementer は起動してよいが、マージは0点が解消してから）
 
@@ -80,12 +80,14 @@ orca orchestration check --wait --types "worker_done,escalation,question,status"
 - 列に1つしか無ければ待たずに処理する（ベンチの枠を遊ばせない）
 - succeeded でない worker_done は、レポートを読んで、仮説の失敗として記録する
 
-### 採否の判定（bench.sh の出力行で行う）
-- **0点（fail または score 0）は人間が判断する**：自動では採用も revert もしない。新しいマージとベンチを止め、ゲート「<title> のマージ後に0点になった（エラー要約: bench.txt の要点）。revert / このまま修正タスクを投入 / その他」を出し、回答に従う。期限は付けない。回答待ちの間も Implementer と Analyst は動かしてよい
-  - ベースラインから0点が続いている間（まだ一度も pass していない）は、0点の解消タスクのベンチが0点のままでも同じくゲートで判断を仰ぐ。ベスト pass スコアが無いため、下記の数値基準は使わない
-- **採用**：`pass` かつ `score >= ベスト pass スコア × (1 − ノイズ幅)`
-- **revert**：上記以外（0点を除く）。`git revert -m 1 <merge commit> --no-edit && git push origin main` を実行する。次のベンチで本番にも反映される。fail の内容（bench.txt）を、新しいタスクの spec に含めて再挑戦させるかどうかを判断する
-  - **まとめて適用したものが基準を割ったら**、全部を revert し、それぞれを `"batchable":false,"reapply":"<元のマージコミット>"` にして列に積み直す（以後は1件ずつ測り、どれが原因かを切り分ける）。`reapply` のあるものは、手順3の merge の代わりに `git cherry-pick -m 1 <reapply>` で入れる（revert 済みのブランチは merge しても何も入らないため）。0点のときは上記どおり人間に判断させる
+### 採否の判定（`$ORC/bin/judge.sh <bench_id>` の verdict に従う）
+ベンチのたびに `judge.sh` を実行する（再起動確認・retry のベンチも。判定は `$STATE/verdicts.jsonl` に残り、次の基準とノイズ幅の計算に使われる）。基準は最高点ではなく直近3回の中央値、ノイズ幅は同じ sha を2回測った組から自動で求める（`judge.sh` の冒頭）。自分で基準を計算し直さない。再起動確認のベンチは記録のために判定するだけで、verdict が human（0点）のとき以外は従わない（再起動確認の合否は `restart-check.sh` の終了コードで決まる）
+- **human（fail または score 0）は人間が判断する**：自動では採用も revert もしない。新しいマージとベンチを止め、ゲート「<title> のマージ後に0点になった（エラー要約: bench.txt の要点）。revert / このまま修正タスクを投入 / その他」を出し、回答に従う。期限は付けない。回答待ちの間も Implementer と Analyst は動かしてよい
+  - ベースラインから0点が続いている間（まだ一度も pass していない）は、0点の解消タスクのベンチが0点のままでも同じくゲートで判断を仰ぐ
+- **adopt**：採用。次の列の処理に進む
+- **retry**：基準を割った1回目。ノイズの可能性があるので、他のマージより先に同じ sha をもう1回測る：`SKIP_DEPLOY=1 TASK=<同じ> $ORC/bin/bench.sh HEAD "retry <title>"` → `judge.sh` をもう一度
+- **revert**：同じ sha で2回続けて基準を割った。`git revert -m 1 <merge commit> --no-edit && git push origin main` を実行する。次のベンチで本番にも反映される。fail の内容（bench.txt）を、新しいタスクの spec に含めて再挑戦させるかどうかを判断する
+  - **まとめて適用したものが revert になったら**、全部を revert し、それぞれを `"batchable":false,"reapply":"<元のマージコミット>"` にして列に積み直す（以後は1件ずつ測り、どれが原因かを切り分ける）。`reapply` のあるものは、手順3の merge の代わりに `git cherry-pick -m 1 <reapply>` で入れる（revert 済みのブランチは merge しても何も入らないため）
 
 ### 再起動確認（まとめて行う）
 採用のたびには行わない。再起動確認のベンチは変更を測らないので、ベンチ枠を食う（リハーサルではベンチの4分の1が再起動確認だった）。

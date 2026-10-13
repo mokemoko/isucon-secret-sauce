@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # usage: bin/restart-check.sh [note]
 # 全ホスト再起動 → PROBE_URLS の応答が再起動前と一致するまで待つ (データ永続化確認) → deploy 無しでベンチ
-# 実行タイミング: restart_risk 付きタスクの採用後と最終チェックのみ
+# 実行タイミング: restart_risk 付きの採用がたまったとき (coordinator.md の「再起動確認」) と最終チェック
 set -euo pipefail
 cd "$(dirname "$0")/.."
 . "${ENV_FILE:-./env.sh}"

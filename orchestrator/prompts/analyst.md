@@ -36,6 +36,7 @@
   "expected_gain": "high|mid|low",
   "cost": "high|mid|low",
   "restart_risk": true,
+  "batchable": false,
   "needs_human": false,
   "evidence": "根拠 (summary.md の該当行の数値、クエリ、pprof の関数、resources の飽和)",
   "scoring_rationale": "採点上なぜ効くか (scoring.json の重み・減点・反映遅延のどれに基づくか)。重みのないエンドポイントなら、何と資源を取り合っているか",
@@ -43,6 +44,7 @@
 }
 ```
 
-`restart_risk` が true のものは、title の先頭に `[restart] ` を付ける。
+`restart_risk` が true のものは、title の先頭に `[restart] ` を付ける。判定は implementer.md の手順7と同じ（OS の再起動でしか確かめられないものだけ）。
+`batchable` は、**論点が無くリスクの低い定番の変更**（インデックスの追加、接続プール・DSN などの設定、明らかな N+1 の解消、計測で確かめた不要処理の削除）で true にする。他の変更と同じベンチでまとめて適用され、個別の効果は測られない。採点上のトレードオフがあるもの、仕様の解釈が要るもの、効果を単独で確かめたいもの（ボトルネックの本体への対策）は false。似た小さな対応（複数のインデックスなど）は、別々の仮説にせず1つにまとめる
 `targets` は、この仮説が速くするエンドポイント（summary.md の method と uri をそのまま）とクエリ（fingerprint に含まれる特徴的な部分文字列）。ベンチの実行順の優先度（そのボトルネックの大きさ）の計算に使われる。全体に効くもの（nginx・DB の設定など）は、最も効くと考えるものを書く
 worker_done の要約には、上位3件の題を書く。採点やベンチマーカーの挙動について新しく分かったことがあれば、`$STATE/reports/analyst-<bench_id>.md` に書き、要約の末尾に `insights: あり` と付ける。

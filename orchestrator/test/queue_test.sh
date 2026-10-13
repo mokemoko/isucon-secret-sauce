@@ -22,6 +22,16 @@ out=$($q rank)
 echo "$out" | head -1 | grep -q '基準ベンチ: b2' || { echo "FAIL base bench: $out"; exit 1; }
 got=$(jq -c '[.queue[] | [.task_id, .priority]]' "$t/queue-rank.json")
 [ "$got" = '[["a",0.6],["c",0.24],["b",0.12],["d",0.09]]' ] || { echo "FAIL rank: $got"; exit 1; }
+[ "$(jq -c .batch "$t/queue-rank.json")" = '["a"]' ] || { echo "FAIL batch (head not batchable)"; exit 1; }
+# まとめて適用: 先頭が batchable なら、batchable・restart なし・area 重複なしを最大 BATCH_MAX 件
+cp "$t/merge-queue.json" "$t/q.bak"
+jq 'map(.batchable = true | .area = .task_id) | map(if .task_id == "b" then .restart_risk = true elif .task_id == "d" then .area = "a" else . end)' "$t/q.bak" >"$t/merge-queue.json"
+$q rank >/dev/null
+[ "$(jq -c .batch "$t/queue-rank.json")" = '["a","c"]' ] || { echo "FAIL batch: $(jq -c .batch "$t/queue-rank.json")"; exit 1; }
+jq 'map(.batchable = true | .area = .task_id)' "$t/q.bak" >"$t/merge-queue.json"
+BATCH_MAX=2 $q rank >/dev/null
+[ "$(jq -c .batch "$t/queue-rank.json")" = '["a","c"]' ] || { echo "FAIL batch max"; exit 1; }
+cp "$t/q.bak" "$t/merge-queue.json"
 # 待ちすぎ: d を 30 分前に積んだことにすると先頭
 jq 'map(if .task_id == "d" then .ready_at -= 1800 else . end)' "$t/merge-queue.json" >"$t/x" && mv "$t/x" "$t/merge-queue.json"
 $q rank >/dev/null

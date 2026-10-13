@@ -68,15 +68,15 @@ orca orchestration check --wait --types "worker_done,escalation,question,status"
 - 仮説の spec をそのまま渡す。担当範囲（area）が実行中の他タスクと重なるものは、重なりが解消されるまで待たせる
 - worker_done（succeeded）を受けたら、すぐにはマージせず**マージ待ちの列**に積む。ボトルネックの大きいものから入れないと、効果の小さい変更が先に入ってスコアの推移が読めなくなるため
   ```
-  $ORC/bin/queue.sh add '{"task_id":"<id>","branch":"impl/<id>","title":"<title>","expected_gain":"<仮説の値>","predicted":<数値 か null>,"restart_risk":<true|false>,"targets":<仮説の targets>}'
+  $ORC/bin/queue.sh add '{"task_id":"<id>","branch":"impl/<id>","title":"<title>","area":"<仮説の area>","expected_gain":"<仮説の値>","predicted":<数値 か null>,"restart_risk":<true|false>,"batchable":<仮説の batchable>,"targets":<仮説の targets>}'
   ```
-- **ベンチの枠が空いたら**（ベンチを回していないとき、メッセージを処理し終えるたびに確認する）、`$ORC/bin/queue.sh rank` で並べ、先頭の1つを処理する。順位の理由は表（優先度 = ボトルネック度 × 確信度、`*` は20分以上待ったもの）に出る。人間の示唆で特定のタスクを先にするよう言われたら、それを優先してよい
-  1. `$ORC/bin/queue.sh pop <task_id>`
+- **ベンチの枠が空いたら**（ベンチを回していないとき、メッセージを処理し終えるたびに確認する）、`$ORC/bin/queue.sh rank` で並べ、表の「次にまとめて適用」（`queue-rank.json` の `.batch`）を**1回のベンチで**処理する。ベンチ枠が律速なので、論点の無い変更は1件ずつ測らない。順位の理由は表（優先度 = ボトルネック度 × 確信度、`*` は20分以上待ったもの）に出る。人間の示唆で特定のタスクを先にするよう言われたら、それを優先してよい（その場合は単独で）
+  1. `.batch` の各 task_id を `$ORC/bin/queue.sh pop <task_id>`
   2. `git fetch origin && git checkout main && git pull --ff-only`
-  3. `git merge --no-ff origin/impl/<task_id>`。競合したら `git merge --abort` して、そのワーカーに `send --to dispatch:<id>` でリベースを依頼する（release しない。リベース後の worker_done で列に積み直す）。列の次のものに進む
+  3. 各 task_id について `git merge --no-ff origin/impl/<task_id>`。競合したら `git merge --abort` して、そのワーカーに `send --to dispatch:<id>` でリベースを依頼する（release しない。リベース後の worker_done で列に積み直す）。残りのマージは続ける。1件もマージできなければ列の次に進む
   4. `git push origin main`
-  5. `TASK=<task_id> PREDICTED=<predicted か空> $ORC/bin/bench.sh origin/main "<title>"`
-  6. 採否を判定する（下記）
+  5. `TASK=<task_id をカンマ区切り> PREDICTED=<1件なら predicted、複数なら空> $ORC/bin/bench.sh origin/main "<title を ' + ' で連結>"`
+  6. 採否を判定する（下記）。まとめて適用したものは**まとめて**採否を決める
 - 列に1つしか無ければ待たずに処理する（ベンチの枠を遊ばせない）
 - succeeded でない worker_done は、レポートを読んで、仮説の失敗として記録する
 
@@ -85,7 +85,17 @@ orca orchestration check --wait --types "worker_done,escalation,question,status"
   - ベースラインから0点が続いている間（まだ一度も pass していない）は、0点の解消タスクのベンチが0点のままでも同じくゲートで判断を仰ぐ。ベスト pass スコアが無いため、下記の数値基準は使わない
 - **採用**：`pass` かつ `score >= ベスト pass スコア × (1 − ノイズ幅)`
 - **revert**：上記以外（0点を除く）。`git revert -m 1 <merge commit> --no-edit && git push origin main` を実行する。次のベンチで本番にも反映される。fail の内容（bench.txt）を、新しいタスクの spec に含めて再挑戦させるかどうかを判断する
-- 採用したタスクのタイトルが `[restart]` で始まるとき、または Implementer の要約が `restart_risk=yes` のときは、`$ORC/bin/restart-check.sh "<title>"` を実行する。失敗したら revert する
+  - **まとめて適用したものが基準を割ったら**、全部を revert し、それぞれを `"batchable":false,"reapply":"<元のマージコミット>"` にして列に積み直す（以後は1件ずつ測り、どれが原因かを切り分ける）。`reapply` のあるものは、手順3の merge の代わりに `git cherry-pick -m 1 <reapply>` で入れる（revert 済みのブランチは merge しても何も入らないため）。0点のときは上記どおり人間に判断させる
+
+### 再起動確認（まとめて行う）
+採用のたびには行わない。再起動確認のベンチは変更を測らないので、ベンチ枠を食う（リハーサルではベンチの4分の1が再起動確認だった）。
+- 採用したタスクが `restart_risk=yes`（タイトルが `[restart]` で始まる）なら、その task_id・マージコミット・採用時刻を `$STATE/restart-pending.tsv` に1行足す
+- 次のどれかを満たしたら、ベンチの枠が空いたときに `$ORC/bin/restart-check.sh "<pending の task_id を連結>"` を1回実行する
+  - pending が3件以上
+  - 最も古い pending の採用から45分以上
+  - Phase 3 の最終確認（`restart-check.sh final`。pending があれば合わせて確認したことになる）
+- 通ったら `restart-pending.tsv` を空にする
+- 失敗したら、新しいマージを止め、ゲート「再起動確認が失敗（pending: <task_id 一覧>、エラー要約）。pending を新しい順に revert して再確認 / 原因を特定して修正タスク / その他（10分後の HH:MM までに回答が無ければ 1つ目 扱い）」を出す
 
 ### worktree の後始末
 採用・revert・失敗のいずれかで**結論が出たタスク**は、`worker-release` の後に worktree を消す。リベース依頼を出す可能性がある間（結論が出る前）は残す。

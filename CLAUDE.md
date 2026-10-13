@@ -31,3 +31,4 @@ ISUCON 本選を、Orca 上の Claude Code チームで自律的にチューニ�
 - 秘密情報（Webhook URL、鍵、トークン）をコミットしない
 - 過去問の AWS 環境を作ったら必ず `orchestrator/rehearsal/down.sh` で消し、残存が無いことを確認する
 - 過去問のベンチマーカーの実装は読まない（本番ではブラックボックス）
+- エージェントが読む知見（`knowledge/`・`prompts/`）に、過去問の解法を問題名つきで書かない（その問題で再びリハーサルすると答えを渡すことになる）。過去問ごとの評価は `orchestrator/rehearsal/README.md` に書く

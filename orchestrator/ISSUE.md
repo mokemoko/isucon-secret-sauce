@@ -10,11 +10,11 @@
 |---|---|---|
 | 11 | ローカル予測の精度と扱い（リハ#2 で順位付けに使えないと判明） | todo |
 | 14 | [リハ#2] setup の rsync・deploy key 生成が auto mode の権限判定で拒否される | done |
-| 15 | [リハ#2] ダッシュボード起動コマンドの `$END` が未定義 | todo |
-| 17 | [リハ#2] 実行中 Dispatch のあるタスクに gate-create できない | todo |
-| 18 | [リハ#2] 待機中ワーカーの入力欄に下書きがあると send が届かない | todo |
-| 19 | [リハ#2] check --wait を重ねると2本目が「active actionable waiter」で失敗する | todo |
-| 20 | [リハ#2] zsh の配列が1始まりで、Coordinator のタスク登録ループの表示名がずれた | todo |
+| 15 | [リハ#2] ダッシュボード起動コマンドの `$END` が未定義 | done |
+| 17 | [リハ#2] 実行中 Dispatch のあるタスクに gate-create できない | done |
+| 18 | [リハ#2] 待機中ワーカーの入力欄に下書きがあると send が届かない | done |
+| 19 | [リハ#2] check --wait を重ねると2本目が「active actionable waiter」で失敗する | done |
+| 20 | [リハ#2] zsh の配列が1始まりで、Coordinator のタスク登録ループの表示名がずれた | done |
 | 21 | [リハ#2] PROBE_URLS が空だと restart-check.sh が再起動完了を待たずにベンチを走らせる | done |
 | 22 | [リハ#2] Implementer が他の worktree のローカル環境に initialize を誤送信する | done |
 | 23 | [リハ#2] EC2 の停止・再開で IP が変わり、複数の設定ファイルを手で直す必要がある | todo |
@@ -44,26 +44,31 @@
 ## 15. [リハ#2] ダッシュボード起動コマンドの `$END` が未定義
 - 現象：coordinator.md が `go run . -run <run_id> -end $END` を人間に伝えるが、`$END` をどこにも定義していない。人間はコマンドを受け取れず、ダッシュボードが起動しなかった
 - 対応案：競技の終了時刻を人間が `state/docs/` に書く（RUNBOOK の手順に追加）か、ダッシュボードの `-end` を省略可能にする
+- 対応（done）：END は coordinator.md に既定値があるが、文章中の値でシェル変数ではなく、リハーサルでは日付も合わない。Coordinator が開始時に `$STATE/end` に書き、ダッシュボードは `-run`・`-end` を省略すると `state/run_id`・`state/end` を読む。人間は `go run .` だけで起動できる。RUNBOOK の手順5で終了時刻を指示に添える
 
 ## 17. [リハ#2] 実行中 Dispatch のあるタスクに gate-create できない
 - 現象：`gate-create --task <setup>` が `task_not_startable`（Dispatch が active）で拒否された
 - 影響：coordinator.md の「question/escalation は gate-create で人間に回す」がそのままでは実行できない
 - その場の回避策：判断用のタスク（ワーカーを起動しない）を task-create してそこに gate を付ける。coordinator.md に明記すべき
+- 対応（done）：coordinator.md に「ゲートの付け方」を足した（判断用のタスクを作って付け、解決したら completed にする）
 
 ## 18. [リハ#2] 待機中ワーカーの入力欄に下書きがあると send が届かない
 - 現象：escalation 後に待機していた setup ワーカーへ再開の send を送ったが、入力欄に人間の未送信の下書きが残っていて、ワーカーが通知を取り込まなかった
 - 影響：ゲートを解決しても setup が再開せず、Phase 1 のクリティカルパスが止まった
 - その場の回避策：人間に下書きを送信してもらう。Coordinator は send 後に worker-read でワーカーが取り込んだかを確認する
+- 対応（done）：coordinator.md に、send の後2分以内に worker-read で取り込みを確かめ、取り込んでいなければ人間に知らせる手順を足した。RUNBOOK に「ワーカーの入力欄に書きかけを残さない」を足した
 
 ## 19. [リハ#2] check --wait を重ねると2本目が「active actionable waiter」で失敗する
 - 現象：バックグラウンドの check --wait が残ったまま別の check --wait を出すと、`already has an active actionable waiter` で失敗する。jq に通していると原因が見えない
 - 影響：Coordinator が待機を見失い、メッセージを取りこぼしたように見える
 - その場の回避策：check --wait は常に1本だけにする（pgrep で残りを確認）。Run 単位で待機は1本という前提を coordinator.md に書くべき
+- 対応（done）：coordinator.md に、待機はフォアグラウンドで1本だけ、jq で捨てない、エラー時は前の待機の期限切れを待つ（pgrep で探して止めない）と書いた。課題24の「他のワーカーの待機を自分のものと誤認した」件もこれで防ぐ
 
 ## 20. [リハ#2] zsh の配列が1始まりで、Coordinator のタスク登録ループの表示名がずれた
 - 現象：仮説を task-create するループで `names[i]`（0始まりのつもり）を使い、display-name が1件ずつずれた
 - 影響：ダッシュボードの表示名が実際の仮説と食い違う（task_title は正しい）
 - その場の回避策：対応表を作り直した。common.md の zsh の注意に「配列は1始まり」を足す（bash -c は課題16の理由で使わない）
+- 対応（done）：common.md の zsh の注意に「配列の添字は1始まり」を足した
 
 ## 21. [リハ#2] PROBE_URLS が空だと restart-check.sh が再起動完了を待たずにベンチを走らせる
 - 現象：setup が PROBE_URLS を埋めておらず、snapshot が再起動前後とも空文字の shasum で即一致。reboot から15秒でベンチを開始し、ssh 切断で `bench command failed`（201510-2293ef9）

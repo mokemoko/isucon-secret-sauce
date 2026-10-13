@@ -1,7 +1,7 @@
 // ISUCON 自律チューニングのダッシュボード。
 // state/ (bench.jsonl, analysis/, phase) と Orca orchestration の状態を読み、人間の示唆・ゲート回答を Orca に流す。
 // 問題情報を外に出さないため、必ず 127.0.0.1 か Tailscale のアドレスで待ち受けること。
-// 起動: cd dashboard && go run . -run <run_id> -end 2026-10-31T18:00:00+09:00 [-addr <tailscale-ip>:9180]
+// 起動: cd dashboard && go run . [-run <run_id>] [-end 2026-10-31T18:00:00+09:00] [-addr <tailscale-ip>:9180]  (省略時は state/run_id・state/end)
 package main
 
 import (
@@ -29,8 +29,8 @@ var benchHTML []byte
 var (
 	addr     = flag.String("addr", "127.0.0.1:9180", "listen address (localhost か Tailscale IP のみ。8080 等は競技アプリと衝突しやすいので避ける)")
 	stateDir = flag.String("state", "../state", "bench lane の state ディレクトリ")
-	runID    = flag.String("run", "", "Orca orchestration Run id (Coordinator の run-create 結果)")
-	endAt    = flag.String("end", "", "競技終了時刻 RFC3339 (例 2026-10-31T18:00:00+09:00)")
+	runID    = flag.String("run", "", "Orca orchestration Run id。省略時は <state>/run_id")
+	endAt    = flag.String("end", "", "競技終了時刻 RFC3339 (例 2026-10-31T18:00:00+09:00)。省略時は <state>/end")
 	orcaBin  = flag.String("orca", "orca", "orca CLI")
 )
 
@@ -69,7 +69,12 @@ func readBench() []json.RawMessage {
 
 // ponytail: リクエスト毎に orca CLI を叩く。閲覧者3人×3秒ポーリングなら十分、重ければ数秒キャッシュを足す
 func handleState(w http.ResponseWriter, r *http.Request) {
-	res := map[string]any{"run": *runID, "end": *endAt, "errors": []string{}}
+	end := *endAt
+	if end == "" {
+		b, _ := os.ReadFile(filepath.Join(*stateDir, "end"))
+		end = strings.TrimSpace(string(b))
+	}
+	res := map[string]any{"run": *runID, "end": end, "errors": []string{}}
 	errs := []string{}
 	phase, _ := os.ReadFile(filepath.Join(*stateDir, "phase"))
 	res["phase"] = strings.TrimSpace(string(phase))
@@ -173,6 +178,13 @@ func post(fn func(body map[string]string) ([]string, error)) http.HandlerFunc {
 
 func main() {
 	flag.Parse()
+	if *runID == "" {
+		b, err := os.ReadFile(filepath.Join(*stateDir, "run_id"))
+		if err != nil {
+			log.Fatal("-run を指定するか、Coordinator の起動後に実行すること: ", err)
+		}
+		*runID = strings.TrimSpace(string(b))
+	}
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write(indexHTML)

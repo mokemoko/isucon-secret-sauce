@@ -19,18 +19,22 @@
 ```
 orca orchestration run-create --objective "ISUCON2026 tuning" --json   # run_id を $STATE/run_id に保存
 echo 1 > $STATE/phase
+echo "<END の値>" > $STATE/end          # ダッシュボードの残り時間の表示に使う
 ```
-人間に、ダッシュボードの起動コマンドを伝える：`cd $ORC/dashboard && go run . -run <run_id> -end $END`
+人間に、ダッシュボードの起動コマンドを伝える：`cd <ORC の絶対パス>/dashboard && env -u GOROOT go run .`（run_id と終了時刻は state から読む）。`orca worktree set --worktree active --comment` にも同じコマンドを書く
 
 ## メインループ（全フェーズ共通）
 ```
 orca orchestration check --wait --types "worker_done,escalation,question,status" --timeout-ms 300000 --json
 ```
+- **待機は常にフォアグラウンドで1本だけ**。バックグラウンド実行（`&`・run_in_background）にしない。2本目は `already has an active actionable waiter` で失敗する（リハーサルで、待機を見失いメッセージを取りこぼしたように見えた）。出力を `jq` に通して捨てず、エラーが出たら読む。このエラーが出たら、前の待機の `--timeout-ms` が切れるのを待ってからやり直す（`pgrep` で探して止めない。他のワーカーの待機を自分のものと取り違える）
 - 返ってきた Delivery の全メッセージを処理してから `--ack <delivery_id>` する
 - マージ待ちの列（`$STATE/merge-queue.json`）が空でなく、ベンチを回していなければ、`--timeout-ms 1000` で新着だけ取り込んでから列を処理する（長く待たない）
 - **subject が `[human]` で始まる status**：人間の示唆。内容を具体的なタスクにして最優先で投入する。曖昧なら Analyst に具体化させる。受理したことを `orca worktree set --worktree active --comment` で示す
 - **subject が `[human-gate] <gate_id>` の status**：人間のゲート回答。body が回答なので、`orca orchestration gate-resolve --id <gate_id> --resolution "<body>"` をあなたが実行する（ダッシュボードは Run 外のプロセスのため gate-resolve できない）
-- **question**：自分で答えられるものは `reply` する。人間の判断が要るものは `gate-create` で人間に回し、ワーカーには「人間に確認中」と reply する
+- **question**：自分で答えられるものは `reply` する。人間の判断が要るものは、下の「ゲートの付け方」で人間に回し、ワーカーには「人間に確認中」と reply する
+- **ゲートの付け方**：ゲートは**判断用のタスク**に付ける。ワーカーが動いているタスクには `gate-create` できない（`task_not_startable` で拒否される）。`task-create --task-title "human: <判断の要約>"` でワーカーを起動しないタスクを作り、`gate-create --task <その id>` する。解決したら `task-update --id <その id> --status completed` で閉じる。ダッシュボードの「判断待ち」には、未回答のゲートが付いたタスクだけが出る
+- **ワーカーへの send は届いたかを確かめる**：待機中のワーカーに `send` したら、2分以内に `worker-read` で取り込んだか（返事や作業の再開）を確かめる。取り込んでいなければ、入力欄に人間の書きかけが残っていて通知が入らない可能性がある。`orca worktree set --worktree active --comment "<ワーカー名> の入力欄の書きかけを送信するか消してください"` で人間に知らせる
 - **worker_done**：役割ごとの処理（下記）を行い、その後 `worker-release` する
 - **タイムアウト**：未解決ゲートの解決状況（`gate-list --run <run_id> --json`）、残り時間、空いているワーカー枠を確認して、必要なら投入する
 - **期限付きゲート**：質問文の末尾に「（HH:MM までに回答が無ければ <既定の選択肢> 扱い）」と書いて作るゲート。作った時刻と期限を覚えておき、期限付きゲートが未解決の間は `check --wait` の `--timeout-ms` を 60000 に縮める。期限を過ぎても未解決なら、あなたが `gate-resolve --resolution "<既定の選択肢>（期限切れの自動判断）"` を実行し、その旨を人間に `orca worktree set --worktree active --comment` で示す

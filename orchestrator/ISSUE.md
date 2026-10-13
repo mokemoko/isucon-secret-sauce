@@ -15,7 +15,7 @@
 | 18 | [リハ#2] 待機中ワーカーの入力欄に下書きがあると send が届かない | todo |
 | 19 | [リハ#2] check --wait を重ねると2本目が「active actionable waiter」で失敗する | todo |
 | 20 | [リハ#2] zsh の配列が1始まりで、Coordinator のタスク登録ループの表示名がずれた | todo |
-| 21 | [リハ#2] PROBE_URLS が空だと restart-check.sh が再起動完了を待たずにベンチを走らせる | todo |
+| 21 | [リハ#2] PROBE_URLS が空だと restart-check.sh が再起動完了を待たずにベンチを走らせる | done |
 | 22 | [リハ#2] Implementer が他の worktree のローカル環境に initialize を誤送信する | todo |
 | 23 | [リハ#2] EC2 の停止・再開で IP が変わり、複数の設定ファイルを手で直す必要がある | todo |
 | 24 | [リハ#2] 終盤にスコアが漂流し、採否判定がノイズに振られた | todo |
@@ -68,6 +68,7 @@
 - 現象：setup が PROBE_URLS を埋めておらず、snapshot が再起動前後とも空文字の shasum で即一致。reboot から15秒でベンチを開始し、ssh 切断で `bench command failed`（201510-2293ef9）
 - 影響：アプリは正常なのに restart-check が fail になり、手順どおりなら不要な revert をするところだった
 - その場の回避策：isu1 のサービスが active になるのを待ってから `SKIP_DEPLOY=1 bin/bench.sh HEAD` を手動で再実行。restart-check.sh は PROBE_URLS が空なら失敗させるか、ssh の疎通とサービスの active を待つべき。setup の受け入れ条件に PROBE_URLS を入れる
+- 対応（done）：restart-check.sh は PROBE_URLS が空、または再起動前に失敗する URL があれば再起動せずに止まる。再起動後は各ホストに ssh でき `systemctl is-system-running --wait` が running/degraded になるまで待ってから probe を比べる。recon.md の setup で PROBE_URLS を必須にした。`test/restart_check_test.sh` を追加
 
 ## 22. [リハ#2] Implementer が他の worktree のローカル環境に initialize を誤送信する
 - 現象：ownerchairs が isuride-idx（18091）へ、lastloc が isuride-appnotif（18093）へ、それぞれ initialize を1回誤送信した。idx 側では initialize の失敗が1回出た

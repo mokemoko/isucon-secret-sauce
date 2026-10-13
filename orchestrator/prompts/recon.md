@@ -51,6 +51,7 @@
    - アプリに pprof（または言語相当）を入れる。アプリが動く全台を env.sh の `PPROF_HOSTS` に書く
    - alp 設定（URI の正規化パターン）を作る。nginx の JSON ログ・alp・MySQL の設定は `$ORC/../templates/` の雛形と見比べ、必要な部分だけ取り込む（丸ごと置き換えない）
 4. `$ORC/env.sh` を埋める（`env.example.sh` 参照）。BENCH_CMD は manual の結果に従う
+   - `PROBE_URLS` は必須。DB のデータを返し、ベンチ以外では変化しない GET を2〜3個（認証が要らないもの。要るなら curl に cookie やヘッダを付けた形で書く）。再起動確認（`bin/restart-check.sh`）が再起動前後の応答を比べてデータの永続化を確かめるのに使い、空だと動かない。APP_HOST 上で `curl -fsS` が通ることを確かめる
 5. `$ORC/bin/bench.sh` を1回実行し、`bench.jsonl` に pass 行が出ることを確認する（このタスクに限り本番ベンチ実行可）
 
 ### local：ローカル環境構築 → `$STATE/docs/local.md`

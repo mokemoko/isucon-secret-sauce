@@ -42,7 +42,9 @@
 - **変更しない。読み取りのみ**
 
 ### setup：git 化・計測導入・デプロイ経路（survey の後）
-1. webapp と主要設定（nginx, mysql, systemd unit）をリポジトリに集める。人間が用意した private リポジトリ（Coordinator のワークスペース。remote は origin）に push する。リポジトリの新規作成・公開設定の変更はしない。各サーバに deploy key を置いて clone する
+1. webapp と主要設定（nginx, mysql, systemd unit）をリポジトリに集める。人間が用意した private リポジトリ（Coordinator のワークスペース。remote は origin）に push する。リポジトリの新規作成・公開設定の変更・deploy key の登録はしない（人間が `bin/deploy-key.sh` で登録済み。各サーバから `ssh -T git@github.com` が通る）
+   - **サーバ側で git 化して push する**：1台目で webapp のディレクトリに設定ファイルを写し（`etc/nginx/` などリポジトリ内の場所に）、`git init`・commit し、origin を競技リポジトリにして main を push する。手元は `git pull` で受け取る。サーバから手元へ rsync・scp でまとめて写さない（auto モードの判定で止まる）
+   - 他のサーバは同じリポジトリを clone して、REPO_DIR に置く
 2. リポジトリ直下の `Makefile` に `deploy` ターゲットを作る。中身は、ビルド、設定ファイルの配置（ホスト名で分岐してよい）、サービス再起動。サーバ上で `make deploy` が冪等に通ること
 3. 計測を有効化する
    - nginx のアクセスログを JSON 形式にし、`request_time` を含める。書き込みは `access_log <path> <format> buffer=64k flush=1s;` でバッファリングする（1リクエストごとの write を減らすため。ベンチ後の回収は1秒以上後なので取りこぼさない）

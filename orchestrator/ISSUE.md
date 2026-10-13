@@ -9,7 +9,7 @@
 | # | 課題 | 状態 |
 |---|---|---|
 | 11 | ローカル予測の精度と扱い（リハ#2 で順位付けに使えないと判明） | todo |
-| 14 | [リハ#2] setup の rsync・deploy key 生成が auto mode の権限判定で拒否される | todo |
+| 14 | [リハ#2] setup の rsync・deploy key 生成が auto mode の権限判定で拒否される | done |
 | 15 | [リハ#2] ダッシュボード起動コマンドの `$END` が未定義 | todo |
 | 17 | [リハ#2] 実行中 Dispatch のあるタスクに gate-create できない | todo |
 | 18 | [リハ#2] 待機中ワーカーの入力欄に下書きがあると send が届かない | todo |
@@ -39,6 +39,7 @@
 - 影響：Phase 1 のクリティカルパス（setup→ベースライン）が人間の対応待ちで止まる
 - その場の回避策：判断用タスクにゲートを出し、人間に許可または手動実施を依頼。事前に settings の allow に入れておくか、RUNBOOK の手順に deploy key の用意を入れるのが本筋
 - 補足：deploy key は `--allow-write` 付きで登録しようとして「Permission Grant」として止まった。人間が手動で承認して進めた
+- 対応（done）：deploy key の登録は人間が開始直後に `bin/deploy-key.sh <owner/repo>` で行う（RUNBOOK の手順4）。setup はサーバ側で webapp を git 化して deploy key で push し、手元は pull する（rsync で手元に写さない）。auto モードの判定は実環境でしか確かめられないので、次のリハーサルで確認する
 
 ## 15. [リハ#2] ダッシュボード起動コマンドの `$END` が未定義
 - 現象：coordinator.md が `go run . -run <run_id> -end $END` を人間に伝えるが、`$END` をどこにも定義していない。人間はコマンドを受け取れず、ダッシュボードが起動しなかった

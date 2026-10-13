@@ -32,7 +32,7 @@
 3. マニュアルを `state/docs/manual-raw.md` に保存し、先頭にリハーサルの注記（台数・ベンチの実行方法・参照禁止のもの）を書く
 4. `~/isucon/ssh_config` に up.sh の `ssh_config` を写し、`~/.ssh/config` の先頭に Include を足す（終わったら外す）。`state/docs/hosts.txt` を書く
 5. `env.sh` を `env.example.sh` から作り、`HOSTS`・`BENCH_CMD`・`BLACKBOX_PATHS` だけ埋める（Coordinator が開始時に `BLACKBOX_PATHS` を読むため。残りは setup が埋める）
-6. 競技リポジトリを空の main にする（リハーサルは `mokemoko/isucon-test` を使い回す）。以降は RUNBOOK の手順 4 の後半から
+6. 競技リポジトリを空の main にする（リハーサルは `mokemoko/isucon-test` を使い回す。前回の deploy key は消す）。`bin/deploy-key.sh mokemoko/isucon-test` を実行する。以降は RUNBOOK の手順 5 から
 
 | 問題 | 起動 | ベンチ |
 |---|---|---|

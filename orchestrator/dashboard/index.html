@@ -89,6 +89,7 @@ a { color: var(--series-1); }
     <section>
       <h2>ベンチ履歴（新しい順）</h2>
       <div class="scroll"><table id="bench"></table></div>
+      <div id="benchMore"></div>
     </section>
     <section>
       <h2>タスク</h2>
@@ -185,14 +186,19 @@ function renderChart(rows) {
   });
 }
 
+const BENCH_LIMIT = 20; let benchAll = false, benchRows = [];
 function renderBench(rows) {
+  benchRows = rows;
   $("bench").innerHTML = `<tr><th>時刻</th><th>id</th><th>結果</th><th class="num">score</th><th class="num">前回比</th><th title="bin/judge.sh の判定。マウスを乗せると基準">判定</th><th>task</th><th>note</th></tr>` +
-    rows.slice().reverse().slice(0, 30).map(r => `<tr>
+    rows.slice().reverse().slice(0, benchAll ? undefined : BENCH_LIMIT).map(r => `<tr>
       <td>${hms(r.ts)}</td><td><a href="/bench/?id=${encodeURIComponent(r.id)}">${esc(r.id)}</a>${r.restart_check ? ' <span class="tag restart">再起動</span>' : ""}</td>
       <td class="${r.pass ? "ok" : "ng"}">${r.pass ? "pass" : "fail"}</td>
       <td class="num">${fmt(r.score)}</td><td class="num">${pct(r.actual)}</td>${verdictCell(r.id)}
       <td>${esc(r.task)}</td><td class="muted">${esc(r.error || r.note)}</td></tr>`).join("");
+  $("benchMore").innerHTML = rows.length > BENCH_LIMIT
+    ? `<button class="secondary">${benchAll ? `直近${BENCH_LIMIT}件に戻す` : `全${rows.length}件を表示`}</button>` : "";
 }
+$("benchMore").onclick = e => { if (e.target.closest("button")) { benchAll = !benchAll; renderBench(benchRows); } };
 
 const TASK_LIMIT = 10, showAll = {}; // 区分 → 全件表示中か
 let mergeIds = new Set(); // マージ待ちの列にある task_id

@@ -187,16 +187,30 @@ function renderBench(rows) {
       <td>${esc(r.task)}</td><td class="muted">${esc(r.error || r.note)}</td></tr>`).join("");
 }
 
-const TASK_LIMIT = 10, showAll = {}; // status → 全件表示中か
+const TASK_LIMIT = 10, showAll = {}; // 区分 → 全件表示中か
+let mergeIds = new Set(); // マージ待ちの列にある task_id
+// 作業の流れの順。Orca の status を日本語の区分にまとめる。completed でもマージ待ちの列にあるものは「マージ待ち」
+const LANES = [
+  ["pending", "依存待ち", "先行タスクの完了を待っている"],
+  ["ready", "着手待ち", "着手できるが、ワーカーの空きを待っている"],
+  ["running", "実行中", "ワーカーが作業中"],
+  ["blocked", "判断待ち", "人間の判断（ゲート）を待っている"],
+  ["merge", "マージ待ち", "実装済み。ベンチの枠を待っている"],
+  ["completed", "完了", "マージ・ベンチ済み、または調査タスクの完了"],
+  ["failed", "失敗", ""],
+];
+const lane = t => t.status === "completed" && mergeIds.has(t.id) ? "merge"
+  : ["dispatched", "running"].includes(t.status) ? "running" : t.status;
 function renderTasks(tasks) {
   if (!tasks) { $("tasks").innerHTML = '<span class="muted">-</span>'; return; }
   const by = {};
   // 新しい動きがあった順 (completed_at は ISO、created_at は "YYYY-MM-DD hh:mm:ss" の UTC)
   const at = t => Date.parse(t.completed_at || (t.created_at || "").replace(" ", "T") + "Z") || 0;
-  tasks.slice().sort((x, y) => at(y) - at(x)).forEach(t => (by[t.status] ||= []).push(t));
-  const order = ["running", "dispatched", "ready", "blocked", "pending", "completed", "failed"];
-  const keys = Object.keys(by).sort((a, b) => (order.indexOf(a) + 99) % 99 - (order.indexOf(b) + 99) % 99);
-  $("tasks").innerHTML = keys.map(k => `<div><h2>${esc(k)} (${by[k].length})</h2><ul>${by[k].slice(0, showAll[k] ? undefined : TASK_LIMIT).map(t => {
+  tasks.slice().sort((x, y) => at(y) - at(x)).forEach(t => (by[lane(t)] ||= []).push(t));
+  const known = LANES.map(l => l[0]);
+  const keys = [...known.filter(k => by[k]), ...Object.keys(by).filter(k => !known.includes(k))];
+  const label = k => LANES.find(l => l[0] === k) || [k, k, ""];
+  $("tasks").innerHTML = keys.map(k => `<div><h2 title="${esc(label(k)[2])}">${esc(label(k)[1])} (${by[k].length}) <span class="muted" style="font-weight:normal;font-size:11px">${esc(k)}</span></h2><ul>${by[k].slice(0, showAll[k] ? undefined : TASK_LIMIT).map(t => {
     const title = t.task_title || t.display_name || t.id;
     const restart = /\[restart\]/i.test(title) ? ' <span class="tag restart">restart</span>' : "";
     return `<li title="${esc(t.spec)}">${esc(title.replace(/\[restart\]\s*/i, ""))}${restart}<br><span class="muted">${esc(t.id)}</span></li>`;
@@ -245,7 +259,8 @@ async function tick() {
   $("best").textContent = passed.length ? fmt(Math.max(...passed.map(r => r.score))) : "-";
   $("nbench").textContent = rows.length;
   $("errors").textContent = (state.errors || []).join(" / ");
-  renderChart(rows); renderBench(rows); renderTasks(state.tasks); renderGates(state.gates);
+  renderChart(rows); renderBench(rows); renderGates(state.gates);
+  fetch("/state/merge-queue.json").then(r => r.ok ? r.json() : []).catch(() => []).then(q => { mergeIds = new Set(q.map(x => x.task_id)); renderTasks(state.tasks); });
   renderAnalysis(state.analysis?.id);
   fetch("/state/queue-rank.json").then(r => r.ok ? r.json() : null).then(renderQueue).catch(() => renderQueue(null));
   fetch("/state/docs/insights.md").then(r => r.ok ? r.text() : "（まだありません）").then(t => {

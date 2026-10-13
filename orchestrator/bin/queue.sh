@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # マージ待ちの列 ($STATE/merge-queue.json)。Coordinator が Implementer の完了を積み、ベンチの枠が空いたら rank の先頭から1つ処理する。
 # usage:
-#   bin/queue.sh add '<json>'   {task_id, branch, title, area, expected_gain, predicted, restart_risk, batchable, targets:[{method,uri}|{query}]} を積む (ready_at は今)
+#   bin/queue.sh add '<json>'   {task_id, branch, title, area, expected_gain, restart_risk, batchable, targets:[{method,uri}|{query}]} を積む (ready_at は今)
 #   bin/queue.sh rank           優先度順に並べ、$STATE/queue-rank.json に書いて表を出す。.batch が次のベンチでまとめて適用する task_id
 #   bin/queue.sh pop <task_id>  列から外す (マージした・リベース依頼した・取り下げた)
 # 優先度 = ボトルネック度 × 確信度 (どちらも 0〜1)

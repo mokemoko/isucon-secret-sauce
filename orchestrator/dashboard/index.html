@@ -44,6 +44,7 @@ td.num, th.num { text-align: right; }
 .scroll { overflow-x: auto; }
 .ok::before { content: "✓ "; color: var(--good); }
 .ng::before { content: "✕ "; color: var(--critical); }
+.warn::before { content: "↻ "; color: var(--warning); }
 .muted { color: var(--text-muted); }
 .tag { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 4px; border: 1px solid var(--border); color: var(--text-secondary); }
 .tag.restart { border-color: var(--warning); }
@@ -134,15 +135,22 @@ let state = null;
 
 try { $("who").value = localStorage.getItem("who") || ""; } catch {}
 
-// 各ベンチに「直前の pass ベンチ比の実績改善率」と、予測とのギャップを付ける
+// 各ベンチに「直前の pass ベンチ比の実績改善率」を付ける
 function enrich(rows) {
   let prev = null;
   return rows.map(r => {
     const actual = r.pass && prev ? (r.score - prev) / prev * 100 : null;
-    const gap = actual != null && r.predicted != null ? actual - r.predicted : null;
     if (r.pass) prev = r.score;
-    return { ...r, actual, gap };
+    return { ...r, actual };
   });
+}
+// bin/judge.sh の判定 ($STATE/verdicts.jsonl): id → {verdict, ref, noise, threshold}
+let verdicts = {};
+const VERDICT = { adopt: ["採用", "ok"], retry: ["再測定", "warn"], revert: ["revert", "ng"], human: ["人間判断", "ng"] };
+function verdictCell(id) {
+  const v = verdicts[id]; if (!v) return '<td class="muted">-</td>';
+  const [label, cls] = VERDICT[v.verdict] || [v.verdict, ""];
+  return `<td class="${cls}" title="基準 ${fmt(v.ref)} × (1 − ノイズ ${v.noise}) = ${fmt(v.threshold)}">${esc(label)}</td>`;
 }
 
 function renderChart(rows) {
@@ -169,7 +177,7 @@ function renderChart(rows) {
   svg.querySelectorAll("rect[data-i]").forEach(el => {
     el.onmousemove = e => {
       const r = rows[el.dataset.i], tip = $("tip");
-      tip.innerHTML = `<b>${esc(r.id)}</b> ${hms(r.ts)}<br>${r.pass ? "✓ pass" : "✕ fail"} ${fmt(r.score)}<br>実績 ${pct(r.actual)} / 予測 ${pct(r.predicted)}<br>${esc(r.note || "")}${r.error ? "<br>" + esc(r.error) : ""}`;
+      tip.innerHTML = `<b>${esc(r.id)}</b> ${hms(r.ts)}<br>${r.pass ? "✓ pass" : "✕ fail"} ${fmt(r.score)}<br>前回比 ${pct(r.actual)}${verdicts[r.id] ? " · " + esc((VERDICT[verdicts[r.id].verdict] || [verdicts[r.id].verdict])[0]) : ""}<br>${esc(r.note || "")}${r.error ? "<br>" + esc(r.error) : ""}`;
       tip.style.display = "block";
       tip.style.left = Math.min(e.clientX + 12, innerWidth - 220) + "px"; tip.style.top = e.clientY + 12 + "px";
     };
@@ -178,12 +186,11 @@ function renderChart(rows) {
 }
 
 function renderBench(rows) {
-  $("bench").innerHTML = `<tr><th>時刻</th><th>id</th><th>結果</th><th class="num">score</th><th class="num">実績</th><th class="num">予測</th><th class="num">ギャップ</th><th>task</th><th>note</th></tr>` +
+  $("bench").innerHTML = `<tr><th>時刻</th><th>id</th><th>結果</th><th class="num">score</th><th class="num">前回比</th><th title="bin/judge.sh の判定。マウスを乗せると基準">判定</th><th>task</th><th>note</th></tr>` +
     rows.slice().reverse().slice(0, 30).map(r => `<tr>
       <td>${hms(r.ts)}</td><td><a href="/bench/?id=${encodeURIComponent(r.id)}">${esc(r.id)}</a>${r.restart_check ? ' <span class="tag restart">再起動</span>' : ""}</td>
       <td class="${r.pass ? "ok" : "ng"}">${r.pass ? "pass" : "fail"}</td>
-      <td class="num">${fmt(r.score)}</td><td class="num">${pct(r.actual)}</td>
-      <td class="num">${pct(r.predicted)}</td><td class="num">${pct(r.gap)}</td>
+      <td class="num">${fmt(r.score)}</td><td class="num">${pct(r.actual)}</td>${verdictCell(r.id)}
       <td>${esc(r.task)}</td><td class="muted">${esc(r.error || r.note)}</td></tr>`).join("");
 }
 
@@ -264,6 +271,10 @@ async function tick() {
   $("nbench").textContent = rows.length;
   $("errors").textContent = (state.errors || []).join(" / ");
   renderChart(rows); renderBench(rows); renderGates(state.gates);
+  fetch("/state/verdicts.jsonl").then(r => r.ok ? r.text() : "").catch(() => "").then(t => {
+    verdicts = Object.fromEntries(t.split("\n").filter(Boolean).flatMap(l => { try { const v = JSON.parse(l); return [[v.id, v]]; } catch { return []; } }));
+    renderBench(rows);
+  });
   fetch("/state/merge-queue.json").then(r => r.ok ? r.json() : []).catch(() => []).then(q => { mergeIds = new Set(q.map(x => x.task_id)); renderTasks(state.tasks); });
   renderAnalysis(state.analysis?.id);
   fetch("/state/queue-rank.json").then(r => r.ok ? r.json() : null).then(renderQueue).catch(() => renderQueue(null));

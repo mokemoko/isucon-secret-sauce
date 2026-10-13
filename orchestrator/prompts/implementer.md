@@ -14,11 +14,11 @@
    - ローカル環境へのリクエストは、毎回 `. local/.env && curl http://127.0.0.1:$LOCAL_PORT/...` の形で送る。**ポート番号を直書きしない・他の worktree のポートに送らない**（並列で動く他の Implementer の計測を壊す）
 5. **検証の直前に** `git fetch origin && git rebase origin/main` で最新の main を取り込む。競合は自分で解消する
    - 作業中に他の改善や localbench の更新が main に入っていても、ここで取り込める
-6. `localbench/` があれば、**同じローカル環境・同じ base（取り込んだ origin/main）で** 変更なしと変更ありを比べる
-   - `git switch --detach origin/main` でアプリを起動し直し、`localbench/verify.sh <url> --record`（基準）と `localbench/run.sh <url>` を2回（変更前スコア）
-   - `git switch impl/<task_id>` でアプリを起動し直し、`verify.sh <url>` が通ることを確認し、`run.sh <url>` を2回（変更後スコア）
-   - 予測改善率 = (変更後平均 − 変更前平均) / 変更前平均 × 100。2回の値が10%以上ぶれたら、もう1回ずつ測る
-   - localbench が無い、または動かない場合は予測なし（`predicted=none`）とし、その理由をレポートに書く
+6. `localbench/` があれば、**同じローカル環境で** 正しさを確かめる
+   - `git switch --detach origin/main` でアプリを起動し直し、`localbench/verify.sh <url> --record`（基準）
+   - `git switch impl/<task_id>` でアプリを起動し直し、`verify.sh <url>` が通ることを確認する。差分が出たら、仕様どおりの変化か（応答の順序・形式を変えていないか）を確かめ、壊していれば直す
+   - 負荷での比較（`localbench/run.sh <url> [--load N]`）は**任意**。実装方式を2つ以上考えて選ぶとき（例：キャッシュの持ち方、非同期化の方式）に、案ごとに2回ずつ測って相対比較する。spec で求められたときも行う。数値と選んだ理由をレポートに書く
+   - localbench が無い、または動かない場合は、その理由をレポートに書く
 7. 再起動リスクを自己判定する。**OS の再起動でしか確かめられないもの**だけが対象で、以下のいずれかに当てはまれば `restart_risk=yes`
    - 書き込みをメモリだけに持つ・非同期や遅延で DB・ファイルに書く（再起動でデータが消えうる）
    - 起動時の処理を変える（起動時の DB 読み込み、キャッシュの温め、起動を待つ処理）
@@ -26,12 +26,12 @@
    - ファイルの保存先を変える
    - 次は対象外（deploy のたびにサービスが再起動され、通常のベンチで確かめられる）：ミドルウェアの設定、スキーマ・インデックス、`/initialize`、DB から読み直せるキャッシュ
 8. `git push origin impl/<task_id>`（リベースしたので必要なら `--force-with-lease`）
-9. `$STATE/reports/<task_id>.md` に、変更内容、変更前後のローカルスコア、verify の結果、懸念点を書く
+9. `$STATE/reports/<task_id>.md` に、変更内容、verify の結果、（測ったなら）負荷での比較、懸念点を書く
 10. 自分のローカル環境を停止し、ビルドしたイメージも消す（`docker compose -f local/compose.yml down -v --rmi local`。project 名は `local/.env` から読まれる）。並列で動く他の Implementer の計測を乱さず、ディスクも圧迫しないため
-11. worker_done を送る。要約に必ず `branch=impl/<task_id> predicted=<数値|none> restart_risk=<yes|no>` を含める
+11. worker_done を送る。要約に必ず `branch=impl/<task_id> verify=<ok|ng|none> restart_risk=<yes|no>` を含める
 
 ## 失敗の扱い
 - 仮説が誤っていた（前提が成り立たない、実装すると仕様を壊す）と分かったら、深追いせずに `--outcome failed` で終える。理由をレポートに残すこと自体が成果
-- **ローカルのスコア（predicted）だけを理由に失敗にしない・値を絞らない**。ローカルのベンチは負荷が固定で、スループットの改善を測れないことがある（リハーサルで、ローカルで −26% と出て見送った値が、本番では有効な打ち手だった）。verify が通り、エラーが増えていなければ push して本番で測らせる。パラメータの値を選ぶ仮説では、ローカルで1つに絞らず、試した値と結果をレポートに書く
+- **ローカルのスコアだけを理由に失敗にしない・値を絞らない**。ローカルのベンチは負荷が固定で、スループットの改善を測れないことがある（リハーサルで、ローカルで −26% と出て見送った値が、本番では有効な打ち手だった）。verify が通り、エラーが増えていなければ push して本番で測らせる。パラメータの値を選ぶ仮説では、ローカルで1つに絞らず、試した値と結果をレポートに書く
 - verify が壊れる変更は push しない
 - Coordinator からリベース依頼（競合）が来たら、`origin/main` にリベースして `--force-with-lease` で push し、再度 worker_done を送る

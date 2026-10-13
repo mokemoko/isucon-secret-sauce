@@ -8,7 +8,7 @@
 
 | # | 課題 | 状態 |
 |---|---|---|
-| 11 | ローカル予測の精度と扱い（リハ#2 で順位付けに使えないと判明） | doing |
+| 11 | ローカル予測の精度と扱い（リハ#2 で順位付けに使えないと判明） | done |
 | 14 | [リハ#2] setup の rsync・deploy key 生成が auto mode の権限判定で拒否される | done |
 | 15 | [リハ#2] ダッシュボード起動コマンドの `$END` が未定義 | done |
 | 17 | [リハ#2] 実行中 Dispatch のあるタスクに gate-create できない | done |
@@ -34,7 +34,7 @@
 - 予測と実績の差が −247pt〜+27pt。ローカル MySQL を CPU 0.3 に絞る調整では限界がある
 - 案：検証先を本番と同じ AMI の EC2 にする（ワーカーは Mac のまま、起動は人間がスクリプトで）。AMI 複製の可否を Discord で確認する必要がある
 - 対応（済）：queue.sh の確信度から predicted を外した（expected_gain だけ）。implementer.md で、ローカルのスコアだけを理由に失敗にしない・値を絞らないとした。analyst.md でも、予測が小さい・負というだけで却下済みとみなさないとした
-- 未決：LocalBench の継続改善（予測ギャップを詰めるループ）を続けるか。ローカルの役割を正しさの確認（verify）に絞るなら、LocalBench は初回の構築だけにし、Implementer の前後比較（4回の実行）も省ける
+- 対応（done、人間の判断）：LocalBench の役割を「正しさの確認（verify.sh、主）」と「実装方式の比較（run.sh --load、オプション）」にした。予測ギャップを詰める定期改善はやめ、verify の見逃しか、方式の比較で差が出ないときだけ改善タスクを出す。Implementer は verify を必須、負荷での比較は方式を選ぶときだけ。ダッシュボードのベンチ履歴の予測・ギャップ列は、judge.sh の判定列に置き換えた
 
 ## 14. [リハ#2] setup の rsync・deploy key 生成が auto mode の権限判定で拒否される
 - 現象：setup ワーカーの isu1→ローカル repo への rsync と、isu1 上の ssh-keygen＋gh repo deploy-key add が auto mode の分類器に拒否され、escalation で停止

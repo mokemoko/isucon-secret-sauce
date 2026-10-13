@@ -72,14 +72,14 @@ orca orchestration check --wait --types "worker_done,escalation,question,status"
 - 仮説の spec をそのまま渡す。担当範囲（area）が実行中の他タスクと重なるものは、重なりが解消されるまで待たせる
 - worker_done（succeeded）を受けたら、すぐにはマージせず**マージ待ちの列**に積む。ボトルネックの大きいものから入れないと、効果の小さい変更が先に入ってスコアの推移が読めなくなるため
   ```
-  $ORC/bin/queue.sh add '{"task_id":"<id>","branch":"impl/<id>","title":"<title>","area":"<仮説の area>","expected_gain":"<仮説の値>","predicted":<数値 か null>,"restart_risk":<true|false>,"batchable":<仮説の batchable>,"targets":<仮説の targets>}'
+  $ORC/bin/queue.sh add '{"task_id":"<id>","branch":"impl/<id>","title":"<title>","area":"<仮説の area>","expected_gain":"<仮説の値>","restart_risk":<true|false>,"batchable":<仮説の batchable>,"targets":<仮説の targets>}'
   ```
 - **ベンチの枠が空いたら**（ベンチを回していないとき、メッセージを処理し終えるたびに確認する）、`$ORC/bin/queue.sh rank` で並べ、表の「次にまとめて適用」（`queue-rank.json` の `.batch`）を**1回のベンチで**処理する。ベンチ枠が律速なので、論点の無い変更は1件ずつ測らない。順位の理由は表（優先度 = ボトルネック度 × 確信度、`*` は20分以上待ったもの）に出る。人間の示唆で特定のタスクを先にするよう言われたら、それを優先してよい（その場合は単独で）
   1. `.batch` の各 task_id を `$ORC/bin/queue.sh pop <task_id>`
   2. `git fetch origin && git checkout main && git pull --ff-only`
   3. 各 task_id について `git merge --no-ff origin/impl/<task_id>`。競合したら `git merge --abort` して、そのワーカーに `send --to dispatch:<id>` でリベースを依頼する（release しない。リベース後の worker_done で列に積み直す）。残りのマージは続ける。1件もマージできなければ列の次に進む
   4. `git push origin main`
-  5. `TASK=<task_id をカンマ区切り> PREDICTED=<1件なら predicted、複数なら空> $ORC/bin/bench.sh origin/main "<title を ' + ' で連結>"`
+  5. `TASK=<task_id をカンマ区切り> $ORC/bin/bench.sh origin/main "<title を ' + ' で連結>"`
   6. 採否を判定する（下記）。まとめて適用したものは**まとめて**採否を決める
 - 列に1つしか無ければ待たずに処理する（ベンチの枠を遊ばせない）
 - succeeded でない worker_done は、レポートを読んで、仮説の失敗として記録する
@@ -111,10 +111,10 @@ orca worktree rm --worktree path:<worktree の絶対パス> --force --json
 ```
 ローカル環境（docker）が残っていると Mac のメモリと CPU を食い、他の Implementer のローカルベンチの数値を乱す。
 
-### LocalBench（常に1つ、`--worktree new-top-level`）
-- 次のどちらかを満たしたら、改善タスクを投入する
-  - 予測と実績のギャップの絶対値が 10pt を超えたベンチが出た
-  - 前回の改善から本番ベンチが5回たまった
+### LocalBench（必要なときだけ、`--worktree new-top-level`）
+- 定期的な改善はしない。次のときだけ改善タスクを投入する
+  - verify.sh が見逃した：本番で整合性の fail（0点・エラー）が出たのに、その変更の verify が通っていた
+  - Implementer から「実装方式を比べたいが run.sh で差が出ない」と question が来た
 - 完了したらブランチを main にマージする。ベンチは不要（アプリに影響しないため）
 - マージしたら、Implementer たちに `send --to @claude` で「localbench 更新。rebase して使うこと」と通知する
 

@@ -45,10 +45,13 @@
 1. webapp と主要設定（nginx, mysql, systemd unit）をリポジトリに集める。人間が用意した private リポジトリ（Coordinator のワークスペース。remote は origin）に push する。リポジトリの新規作成・公開設定の変更・deploy key の登録はしない（人間が `bin/deploy-key.sh` で登録済み。各サーバから `ssh -T git@github.com` が通る）
    - **サーバ側で git 化して push する**：1台目で webapp のディレクトリに設定ファイルを写し（`etc/nginx/` などリポジトリ内の場所に）、`git init`・commit し、origin を競技リポジトリにして main を push する。手元は `git pull` で受け取る。サーバから手元へ rsync・scp でまとめて写さない（auto モードの判定で止まる）
    - 他のサーバは同じリポジトリを clone して、REPO_DIR に置く
+   - 競技リポジトリは private なので、**認証情報を含む設定ファイル（DB のパスワード入りの設定・env ファイルなど）もそのまま入れてよい**（公開しないのでレギュレーションに反しない）。どうしても入れられなかったファイルは、Makefile の deploy で配置しない（サーバ上の原本をそのまま使う）。そのファイルの一覧と「deploy で配置しない」ことを `$STATE/docs/env.md` に書く。後のタスクが別経路で配置して壊すのを防ぐため
 2. リポジトリ直下の `Makefile` に `deploy` ターゲットを作る。中身は、ビルド、設定ファイルの配置（ホスト名で分岐してよい）、サービス再起動。サーバ上で `make deploy` が冪等に通ること
 3. 計測を有効化する
    - nginx のアクセスログを JSON 形式にし、`request_time` を含める。書き込みは `access_log <path> <format> buffer=64k flush=1s;` でバッファリングする（1リクエストごとの write を減らすため。ベンチ後の回収は1秒以上後なので取りこぼさない）
    - クエリの計測は **performance_schema の digest 集計を既定にする**（slow log は有効にしない。負荷が大きいため）。MySQL 8.0 なら `SELECT ENABLED FROM performance_schema.setup_consumers WHERE NAME='statements_digest'` が YES であることを確認し、env.sh に `QUERY_DIGEST=psdigest`・`DB_HOSTS`・`MYSQL_CMD` を書く。`bin/digest/query-psdigest.collect.sh post <host> /tmp/x` が行を返すことを確かめる
+   - `DB_HOSTS` には MySQL が動く**全ホスト**を書く（アプリの DB だけでなく、別のミドルウェアのバックエンドなど別用途の MySQL も）
+   - **受け入れ条件**：手順5のベンチの後、`$STATE/analysis/<bench_id>/<host>/queries.json` に、アプリのコードの主要な SELECT（重いエンドポイントが発行するもの）が出ていること。COMMIT・INSERT ばかりで SELECT がほとんど出ない場合は、プリペアドステートメント（Go の database/sql で DSN に `interpolateParams=true` が無いなど）のクエリが digest 集計に出ていない可能性がある。slow log（`long_query_time=0`）に切り替えて `QUERY_DIGEST=pt` にし、その旨を `$STATE/docs/env.md` に書く（詳細は `$ORC/../knowledge/measurement.md`）。アプリの DSN はこのタスクでは変えない（ベースラインを変えるため。`interpolateParams` は Analyst が仮説として出す）
    - DB が MySQL 8.0 以外（MariaDB、PostgreSQL など）や、構成が想定と違う場合は、**`$ORC/../knowledge/measurement.md` を読んで**計測方法を選ぶ。足りないアダプタは `$ORC/bin/digest/` に足してよい（`$ORC` の変更はこの setup タスクに限り可）
    - アプリに pprof（または言語相当）を入れる。アプリが動く全台を env.sh の `PPROF_HOSTS` に書く
    - alp 設定（URI の正規化パターン）を作る。nginx の JSON ログ・alp・MySQL の設定は `$ORC/../templates/` の雛形と見比べ、必要な部分だけ取り込む（丸ごと置き換えない）

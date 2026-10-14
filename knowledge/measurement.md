@@ -9,10 +9,10 @@ orchestrator の実装（`orchestrator/bin/digest/` のアダプタ）との対�
 
 | 計測 | 負荷 | 備考 |
 |---|---|---|
-| MySQL slow log（`long_query_time=0`） | **大**。全クエリをファイルに書き、書き込みはロックで直列化される | private-isu のリハーサルで1分のベンチ = 66MB |
+| MySQL slow log（`long_query_time=0`） | **大**。全クエリをファイルに書き、書き込みはロックで直列化される | 過去の実測で1分のベンチ = 66MB |
 | pprof（ベンチ中 60 秒の CPU プロファイル） | 小〜中（数%程度とされる） | 100Hz の SIGPROF でスタックを取る |
 | nginx アクセスログ | 小 | `access_log <path> <format> buffer=64k flush=1s;` で write を減らす |
-| /proc サンプラー（`orchestrator/bin/sample-resources.sh`） | ごく小 | 実測：300 プロセスの環境で 30 秒に CPU 0.53 秒（1コアの約1.8%）、送信 約5.5KB/s |
+| /proc サンプラー（`orchestrator/bin/sample-resources.sh`） | ごく小 | 過去の実測：300 プロセスの環境で 30 秒に CPU 0.53 秒（1コアの約1.8%）、送信 約5.5KB/s |
 | performance_schema digest 集計 | ほぼ無し | MySQL 8.0 は既定で有効なので、負荷はすでに払っている |
 | ログ回収・alp / pt / pprof の解析 | 無し | ベンチ後に手元で実行 |
 
@@ -27,12 +27,14 @@ orchestrator の実装（`orchestrator/bin/digest/` のアダプタ）との対�
   - 累積値のみで時系列は無い。サンプルは `performance_schema_max_digest_sample_age`（既定60秒）より古いと次の実行で置き換わる
   - `TRUNCATE` には DROP 権限が要る。サーバ上の `sudo mysql`（root の auth_socket）で行う
   - mysql クライアント自身の `SELECT @@version_comment` などが混ざるので取得時に除く
+  - **プリペアドステートメントで実行されたクエリが出ないことがある**。Go の database/sql で DSN に `interpolateParams=true` が無いと、引数つきのクエリは Prepare → Execute → Close のバイナリプロトコルで実行される。過去の実測では、その状態で上位30件のうち SELECT が4件だけ（COMMIT と初期化の INSERT が上位）で、`interpolateParams=true` を入れた後は18件に増えた。原因（Execute が digest 表に集計されないのか、別の digest に分かれるのか）は未確認。Close で破棄されるので `prepared_statements_instances` にも残らない
+  - → 計測を入れたら、アプリの主要な SELECT が出ているかを確かめる。出ていなければ slow log + pt に切り替える（slow log は COM_STMT_EXECUTE も実 SQL で記録する）。`interpolateParams=true` は往復が減るので、それ自体が改善の打ち手にもなる
 
 ### MySQL：slow log + pt-query-digest（深掘り用）
 - アダプタ：`QUERY_DIGEST=pt`。slow log のパスを `LOG_FILES` に足す
 - 使う場面：遅い実 SQL をパラメータ付きで全件見て EXPLAIN したい、ベンチ中のどの時点で遅くなったかを追いたい
 - pt の注意
-  - テキスト出力はバイナリを含む INSERT の例をそのまま載せて巨大になる（リハーサルで 1.2MB）。`--output json` を使う
+  - テキスト出力はバイナリを含む INSERT の例をそのまま載せて巨大になる（過去の実測で 1.2MB）。`--output json` を使う
   - バイナリを含むクエリは値を `?` に置換できず fingerprint にバイナリが残ることがある。制御文字を除いて切り詰める
   - 30 秒ごとの進捗表示が stderr に出る。`--progress time,86400` で止める
 

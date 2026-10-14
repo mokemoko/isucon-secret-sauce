@@ -3,6 +3,7 @@
 #   stop : タグ Project=isucon-rehearsal のインスタンスを止め、停止時刻を $STATE/paused_at に残す
 #   start: 起動し、変わったパブリック IP を ~/isucon/ssh_config・$DIR/ssh_config・$DIR/hosts.tsv・$STATE/docs/hosts.txt に反映する。
 #          マージ待ちの列の ready_at を停止していた分だけ進め、待ち時間に中断を数えない (リハ#2 で順位が待ち時間順に崩れた)
+#          $STATE/end (競技終了時刻) も停止していた分だけ延ばす。Coordinator とダッシュボードはこれを読み直す (リハ#3 で延長幅を見込みで決めて Phase 3 を過ぎた)
 # ホストの名前は tag Name (up.sh が isu1.. と bench を付ける)。プライベート IP は停止しても変わらない
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -27,6 +28,11 @@ case ${1:-} in
     if [ -f "$STATE/paused_at" ]; then
       d=$(( $(date +%s) - $(cat "$STATE/paused_at") ))
       [ -f "$STATE/merge-queue.json" ] && jq --argjson d "$d" 'map(.ready_at += $d)' "$STATE/merge-queue.json" >"$STATE/mq.tmp" && mv "$STATE/mq.tmp" "$STATE/merge-queue.json"
+      if [ -f "$STATE/end" ]; then
+        e=$(cat "$STATE/end"); ts=$(date -j -f '%Y-%m-%dT%H:%M:%S%z' "${e%:*}${e##*:}" +%s)
+        n=$(date -r $((ts + d)) +%Y-%m-%dT%H:%M:%S%z); echo "${n%??}:${n: -2}" >"$STATE/end"
+        echo "end: $e -> $(cat "$STATE/end") (+$((d / 60))分)"
+      fi
       rm "$STATE/paused_at"
     fi
     cat "$DIR/hosts.tsv"

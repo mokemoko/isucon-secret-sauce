@@ -36,13 +36,13 @@
 5. `env.sh` を `env.example.sh` から作り、`HOSTS`・`BENCH_CMD`・`BLACKBOX_PATHS` だけ埋める（Coordinator が開始時に `BLACKBOX_PATHS` を読むため。残りは setup が埋める）
 6. 競技リポジトリを空の main にする（リハーサルは `mokemoko/isucon-test` を使い回す。前回の deploy key は消す）。`bin/deploy-key.sh mokemoko/isucon-test` を実行する。以降は RUNBOOK の手順 5 から
 7. 他の過去問は matsuu/aws-isucon の公開 AMI（ISUCON5予選〜14）で起動できる。ベンチの実行方法は各ディレクトリの README
-8. 途中で中断するときは `rehearsal/pause.sh stop`、再開は `rehearsal/pause.sh start`（IP の付け替えと、マージ待ちの待ち時間の補正をする）
+8. 途中で中断するときは `rehearsal/pause.sh stop`、再開は `rehearsal/pause.sh start`（IP の付け替え、マージ待ちの待ち時間の補正、`state/end` を中断した分だけ延ばす）。Coordinator には END を口頭で延ばさせない（見込みの延長幅と実際の中断がずれる）
 
 | 問題 | 起動 | ベンチ |
 |---|---|---|
 | private-isu | `rehearsal/up.sh`（既定値） | `ssh isu1 /home/isucon/private_isu/benchmarker/bin/benchmarker -u .../userdata -t http://localhost` |
 | ISUCON14 | `AMI=ami-0fcf9e8e8675a9ee4 VOL_GB=20 BLACKBOX_DIR= rehearsal/up.sh` | `sudo systemctl disable --now isuride-payment_mock` の後、`rehearsal/isucon14-bench.sh` を `~/isu-bench.sh` に置く（`./bench run --target https://xiv.isucon.net --addr 127.0.0.1:443` の標準出力から JSON を作る） |
-| ISUCON13 | `AMI=ami-006d211cb716fe8a0 APP_COUNT=2 TYPE=c6a.large BENCH_TYPE=c6a.large BLACKBOX_DIR= rehearsal/up.sh`（AMI は [matsuu/aws-isucon](https://github.com/matsuu/aws-isucon)） | isu1・isu2 の `~/env.sh` の `ISUCON13_POWERDNS_SUBDOMAIN_ADDRESS` を各自のプライベート IP にして `sudo ~/webapp/pdns/init_zone.sh`・`systemctl restart isupipe-go`。bench ホストはアプリ一式を `disable --now` し、`/etc/hosts` に isu1・isu2 を書き、`rehearsal/isucon13-bench.sh` を `~/isu-bench.sh` に置く。`BENCH_CMD="ssh bench /home/isucon/isu-bench.sh"` |
+| ISUCON13 | `AMI=ami-006d211cb716fe8a0 APP_COUNT=2 TYPE=c6a.large BENCH_TYPE=c6a.large BLACKBOX_DIR= rehearsal/up.sh`（AMI は [matsuu/aws-isucon](https://github.com/matsuu/aws-isucon)） | isu1・isu2 の `~/env.sh` の `ISUCON13_POWERDNS_SUBDOMAIN_ADDRESS` を各自のプライベート IP にして `sudo ~/webapp/pdns/init_zone.sh`・`systemctl restart isupipe-go`。bench ホストはアプリ一式を `disable --now` し、`/etc/hosts` に isu1・isu2 を書き、`rehearsal/isucon13-bench.sh` を `~/isu-bench.sh` に置く。`BENCH_CMD="ssh bench /home/isucon/isu-bench.sh"`。負荷走行の向き先は固定しない：マニュアルの注記に「向き先（名前解決の対象サーバ）は isu1・isu2 から選べる。変えるときは人間に頼む（ポータルの操作に相当）」と書き、頼まれたら人間が `BENCH_CMD="ssh bench TARGET=isu2 /home/isucon/isu-bench.sh"` に書き換える |
 
 ## リハーサル後にやること（毎回）
 1. **片付けの確認**。全部確かめてから評価に入る

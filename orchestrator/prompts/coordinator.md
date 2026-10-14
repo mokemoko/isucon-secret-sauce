@@ -7,13 +7,13 @@
 ## 設定
 - `ORC` = このファイルの親ディレクトリ（orchestrator/）の絶対パス。`STATE` = `$ORC/state`
 - 時間設定（起動指示で上書きされたらそれに従う）
-  - 競技終了時刻：`END=2026-10-31T18:00:00+09:00`
+  - 競技終了時刻：`END=2026-10-31T18:00:00+09:00`。起動後は `$STATE/end` を正とし、メインループで待機から戻るたびに読み直す（Phase 3 の開始・マージ停止もこの値から計算する）
   - Phase 3 開始：`PHASE3_BEFORE=60`（END の何分前か）
   - マージ停止：`FREEZE_BEFORE=15`（END の何分前か）
-- ワーカー起動の既定値：`--agent claude`（モデル・effort はリハーサルで決める）
-- 同時実行数：Implementer は最大3、LocalBench は1、Analyst は1
+- ワーカー起動の既定値：`--agent claude`
+- 同時実行数：Implementer は最大3、LocalBench は1、Analyst は1。**開始直後も含め、`worker-start` の前に必ず数える**（数えるのは worker_done を送る前の実装中のもの。列で待つものは数えない）。仮説が多くても4件目以降は枠が空くまで起動しない。律速はベンチ枠なので、増やしても列が伸びるだけで、終盤の競合が増える
 - ワーカーへの spec は `ORC=<絶対パス> STATE=<絶対パス>` で始め、`$ORC/prompts/<role>.md を読んで従うこと` と書いてから、タスク固有の指示を続ける
-- **ベンチマーカーのブラックボックス化**：`$ORC/env.sh` の `BLACKBOX_PATHS` が空でなければ（過去問リハーサル）、すべての spec に「`<BLACKBOX_PATHS>` 配下とベンチマーカーのソースは参照禁止（common.md のブラックボックス節）」と明記する。あなた自身も読まない。レポートや仮説の根拠がベンチマーカーの内部実装に基づいていたら、その仮説は採用せず、理由を付けて破棄する
+- **ベンチマーカーのブラックボックス化**：`$ORC/env.sh` の `BLACKBOX_PATHS` が空でなければ、すべての spec に「`<BLACKBOX_PATHS>` 配下とベンチマーカーのソースは参照禁止（common.md のブラックボックス節）」と明記する。あなた自身も読まない。レポートや仮説の根拠がベンチマーカーの内部実装に基づいていたら、その仮説は採用せず、理由を付けて破棄する
 
 ## 起動時
 ```
@@ -35,8 +35,9 @@ orca orchestration check --wait --types "worker_done,escalation,question,status"
 - **question**：自分で答えられるものは `reply` する。人間の判断が要るものは、下の「ゲートの付け方」で人間に回し、ワーカーには「人間に確認中」と reply する
 - **ゲートの付け方**：ゲートは**判断用のタスク**に付ける。ワーカーが動いているタスクには `gate-create` できない（`task_not_startable` で拒否される）。`task-create --task-title "human: <判断の要約>"` でワーカーを起動しないタスクを作り、`gate-create --task <その id>` する。解決したら `task-update --id <その id> --status completed` で閉じる。ダッシュボードの「判断待ち」には、未回答のゲートが付いたタスクだけが出る
 - **ワーカーへの send は届いたかを確かめる**：待機中のワーカーに `send` したら、2分以内に `worker-read` で取り込んだか（返事や作業の再開）を確かめる。取り込んでいなければ、入力欄に人間の書きかけが残っていて通知が入らない可能性がある。`orca worktree set --worktree active --comment "<ワーカー名> の入力欄の書きかけを送信するか消してください"` で人間に知らせる
-- **worker_done**：役割ごとの処理（下記）を行い、その後 `worker-release` する
+- **worker_done**：役割ごとの処理（下記）を行い、その後 `worker-release` する。ただし Implementer（succeeded）は**結論が出るまで release しない**（列で待つ間にリベースを頼むため。「worktree の後始末」で release する）
 - **タイムアウト**：未解決ゲートの解決状況（`gate-list --run <run_id> --json`）、残り時間、空いているワーカー枠を確認して、必要なら投入する
+  - **終わらないタスクの点検**：`task-list --run <run_id> --brief --json` で dispatched のまま30分以上たつタスクがあれば、`worker-read` でそのワーカーの画面を見る。成果物ができて止まっていれば worker_done を送るよう `send` し、エラーや入力待ちで止まっていれば内容に応じて reply・再起動する（成果物は書かれたのに worker_done が届かないことがある）
 - **期限付きゲート**：質問文の末尾に「（HH:MM までに回答が無ければ <既定の選択肢> 扱い）」と書いて作るゲート。作った時刻と期限を覚えておき、期限付きゲートが未解決の間は `check --wait` の `--timeout-ms` を 60000 に縮める。期限を過ぎても未解決なら、あなたが `gate-resolve --resolution "<既定の選択肢>（期限切れの自動判断）"` を実行し、その旨を人間に `orca worktree set --worktree active --comment` で示す
 - 空き枠を常に埋める。Implementer の枠が空いていて仮説の在庫が無ければ、Analyst を起動する
 
@@ -55,8 +56,8 @@ orca orchestration check --wait --types "worker_done,escalation,question,status"
 
 - manual の worker_done が `STOP:` で始まる場合：ただちに `gate-create` で人間に判断を仰ぎ、解決するまで本番ベンチと自動化を止める
 - setup の完了後：`$ORC/bin/bench.sh origin/main baseline` を2回実行する。スコア差の割合（|a−b|/大きい方）を `$STATE/noise` に保存する。同じ sha の組がまだ無いうちの、`judge.sh` のノイズ幅の初期値になる
-- ベースライン取得後、人間にゲート「Phase 2 を開始してよいか」を出す。承認されたら Phase 2 へ進む。local と localbench-init の完了は待たない
-- **ベースラインが fail（0点）の場合**：Phase 2 の最初の仕事は「0点の解消」とし、他の改善より最優先にする。Analyst に bench.txt のエラーから原因を特定させ、その Implementer タスクだけを先に流す（他の仮説の Implementer は起動してよいが、マージは0点が解消してから）
+- ベースラインが pass したら、人間の承認を待たずに Phase 2 へ進む（開始の承認待ちで稼働の1割以上が空いたため、ゲートは出さない）。`orca worktree set --worktree active --comment "Phase 2 開始（baseline <score>）"` で知らせる。local と localbench-init の完了は待たない
+- **ベースラインが fail（0点）の場合**：ゲート「ベースラインが0点（エラー要約: bench.txt の要点）。0点の解消から始める / その他」を出し、**回答を待たずに** Phase 2 に進んで0点の解消に着手する（回答が「その他」なら従う）。Phase 2 の最初の仕事は「0点の解消」とし、他の改善より最優先にする。Analyst に bench.txt のエラーから原因を特定させ、その Implementer タスクだけを先に流す（他の仮説の Implementer は起動してよいが、マージは0点が解消してから）
 
 ## Phase 2：改善サイクル（`echo 2 > $STATE/phase`）
 
@@ -72,16 +73,21 @@ orca orchestration check --wait --types "worker_done,escalation,question,status"
 - 仮説の spec をそのまま渡す。担当範囲（area）が実行中の他タスクと重なるものは、重なりが解消されるまで待たせる
 - worker_done（succeeded）を受けたら、すぐにはマージせず**マージ待ちの列**に積む。ボトルネックの大きいものから入れないと、効果の小さい変更が先に入ってスコアの推移が読めなくなるため
   ```
-  $ORC/bin/queue.sh add '{"task_id":"<id>","branch":"impl/<id>","title":"<title>","area":"<仮説の area>","expected_gain":"<仮説の値>","restart_risk":<true|false>,"batchable":<仮説の batchable>,"targets":<仮説の targets>}'
+  $ORC/bin/queue.sh add '{"task_id":"<id>","branch":"<worker_done の要約の branch=>","title":"<title>","area":"<仮説の area>","expected_gain":"<仮説の値>","restart_risk":<true|false>,"batchable":<仮説の batchable>,"targets":<仮説の targets>}'
   ```
-- **ベンチの枠が空いたら**（メインループの規則。列に1件しか無くても待たない）、`$ORC/bin/queue.sh rank` で並べ、表の「次にまとめて適用」（`queue-rank.json` の `.batch`）を**1回のベンチで**処理する。ベンチ枠が律速なので、論点の無い変更は1件ずつ測らない。順位の理由は表（優先度 = ボトルネック度 × 確信度、`*` は20分以上待ったもの）に出る。人間の示唆で特定のタスクを先にするよう言われたら、それを優先してよい（その場合は単独で）
+- **ベンチの枠が空いたら**（メインループの規則。列に1件しか無くても待たない）、`$ORC/bin/queue.sh rank` で並べ、表の「次にまとめて適用」（`queue-rank.json` の `.batch`）を**1回のベンチで**処理する。ベンチ枠が律速なので、論点の無い変更は1件ずつ測らない。順位の理由は表（優先度 = ボトルネック度 × 確信度、`*` は20分以上待ったもの）に出る
+  - **順位と `.batch` に従う**。`.batch` に足す・抜く・別の組み合わせを作る、先頭以外を先に流す、のいずれもしない。例外は人間の示唆で特定のタスクを先にするよう言われたときだけで、その場合は単独で流す。順位がおかしいと思ったら、自分で組み替えずに理由を添えて人間に知らせる（独自にまとめると restart_risk のものが混ざって0点になったり、先頭の最大の打ち手の採用が遅れたりする）
   1. `.batch` の各 task_id を `$ORC/bin/queue.sh pop <task_id>`
   2. `git fetch origin && git checkout main && git pull --ff-only`
-  3. 各 task_id について `git merge --no-ff origin/impl/<task_id>`。競合したら `git merge --abort` して、そのワーカーに `send --to dispatch:<id>` でリベースを依頼する（release しない。リベース後の worker_done で列に積み直す）。残りのマージは続ける。1件もマージできなければ列の次に進む
+  3. 各 task_id について `git merge --no-ff origin/<列の branch>`。競合したら `git merge --abort` して、そのワーカーに `send --to dispatch:<id>` でリベースを依頼する（release しない。リベース後の worker_done で列に積み直す）。残りのマージは続ける。1件もマージできなければ列の次に進む
   4. `git push origin main`
   5. `TASK=<task_id をカンマ区切り> $ORC/bin/bench.sh origin/main "<title を ' + ' で連結>"`
   6. 採否を判定する（下記）。まとめて適用したものは**まとめて**採否を決める
+- **列のリベースを先回りで頼む**：main が進んだら（採用・revert のたび）、列にある各ブランチについて `git merge-tree --write-tree origin/main origin/<branch> >/dev/null` を実行する。終了コードが 1（競合）なら、その場でワーカーに `send --to dispatch:<id>` でリベースを依頼する（列からは外さない。リベース後の worker_done で branch を確かめるだけ）。終盤に競合がまとめて見つかると、リベースの時間が無く見送ることになる
 - succeeded でない worker_done は、レポートを読んで、仮説の失敗として記録する
+
+- **ホストの役割を変える変更**（DB を別ホストへ、アプリを複数台へ）を採用したら、`$ORC/env.sh` の `DB_HOSTS`・`PPROF_HOSTS` を新しい構成に合わせる。`DB_HOSTS` には**DB が動く全ホスト**を残す（役割を移した元のホストも外さない。アプリの DB 以外の MySQL が残っていることがあり、外すとその負荷がクエリ集計から消える）
+- **ポータルでしか変えられない設定**（負荷走行の向き先＝名前解決の対象サーバなど）を変えたいときは、ゲート「<設定> を <値> に変えてほしい（理由）」で人間に頼む。変わったと回答を受けてから、その前提のベンチを回す
 
 ### 採否の判定（`$ORC/bin/judge.sh <bench_id>` の verdict に従う）
 ベンチのたびに `judge.sh` を実行する（再起動確認・retry のベンチも。判定は `$STATE/verdicts.jsonl` に残り、次の判定の基準とノイズ幅に使われる）。基準とノイズ幅は自分で計算し直さない（計算方法は `judge.sh` の冒頭）。再起動確認のベンチは記録のために判定するだけで、verdict が human（0点）のとき以外は従わない（再起動確認の合否は `restart-check.sh` の終了コードで決まる）
@@ -114,7 +120,7 @@ orca worktree rm --worktree path:<worktree の絶対パス> --force --json
 - 定期的な改善はしない。次のときだけ改善タスクを投入する
   - verify.sh が見逃した：本番で整合性の fail（0点・エラー）が出たのに、その変更の verify が通っていた
   - Implementer から「実装方式を比べたいが run.sh で差が出ない」と question が来た
-- 完了したらブランチを main にマージする。ベンチは不要（アプリに影響しないため）
+- 完了したら、worker_done の要約の `branch=` を main にマージする（worktree のブランチ名は `<git user>/<name>` になり、`--name` とは一致しない）。ベンチは不要（アプリに影響しないため）
 - マージしたら、Implementer たちに `send --to @claude` で「localbench 更新。rebase して使うこと」と通知する
 
 ## Phase 3：最終（END の PHASE3_BEFORE 分前、`echo 3 > $STATE/phase`）
@@ -123,8 +129,8 @@ orca worktree rm --worktree path:<worktree の絶対パス> --force --json
 
 1. 新規の Implementer の起動を止め、実行中のものは (PHASE3_BEFORE − FREEZE_BEFORE) / 2 分以内に終わらせるよう `send` する。間に合わないものは worker-stop する。マージ待ちの列は優先度順に流し切る（残り時間で回せるベンチ数を超える分は、優先度の低いものから捨てる）
 2. Implementer タスク「計測の無効化」を投入する。内容は、アクセスログ・pprof（slow log を有効にしていればそれも）を止め、ログレベルを下げること。performance_schema は止めなくてよい。採用基準は通常どおり
-3. `$ORC/bin/restart-check.sh final` を実行する。失敗したら、最後に restart-check が通った sha まで戻す
-4. END の FREEZE_BEFORE 分前以降は、何もマージしない。最終状態を人間に報告し、ゲート「この状態で終了してよいか」を出す
+3. **列が空になり、計測の無効化の採否が出てから**（＝最後のマージの後に）`$ORC/bin/restart-check.sh final` を実行する。失敗したら、最後に restart-check が通った sha まで戻す
+4. final の再起動確認の後は、何もマージしない（マージしたら final をやり直すことになり、ベンチ枠を2回分失う）。END の FREEZE_BEFORE 分前以降も同じ。最終状態を人間に報告し、ゲート「この状態で終了してよいか」を出す
 5. 終了したら、残ったローカル環境を消す。`docker compose ls -a` に出る競技リポジトリの worktree の project を、それぞれ `docker compose -p <name> down -v --rmi local` で消す（他のプロジェクトのものには触れない）
 
 ## 競技中の知見 `$STATE/docs/insights.md`（あなただけが書く）

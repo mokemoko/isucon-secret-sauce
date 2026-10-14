@@ -8,10 +8,10 @@ BENCH_CMD="echo TODO"                # ベンチ実行コマンド。標準出�
 PPROF_URL=""                         # 例 "http://localhost:6060/debug/pprof/profile?seconds=60" (PPROF_HOSTS の各台の上で curl)
 PROBE_URLS=""                        # 必須。再起動確認で前後比較する GET URL (APP_HOST 上で curl)。空だと restart-check.sh が動かない
 ALP_ARGS="json --config <競技リポジトリの絶対パス>/config/alp.yml"  # 回収した access.log に対する alp 引数 (雛形は templates/alp.yml)
-BLACKBOX_PATHS=""                    # 過去問リハーサル用: ワーカーに読ませないパス (ベンチマーカーのソース等)。本番は空
+BLACKBOX_PATHS=""                    # ワーカーに読ませないパス (ベンチマーカーのソース等)。空なら制限なし
 ACCESS_DIGEST=alp                    # 解析アダプタ (bin/digest/<kind>-<tool>.sh)。ログ形式や DB が合わなければアダプタを足して切り替える
 QUERY_DIGEST=psdigest                # psdigest: MySQL 8.0 の performance_schema digest 集計 (既定・軽い) / pt: slow log + pt-query-digest (MariaDB、または実 SQL を全件見たいとき)
-DB_HOSTS="isu1"                      # DB が動くホスト (psdigest のリセット・取得先)。未設定なら APP_HOST
+DB_HOSTS="isu1"                      # MySQL が動く全ホスト (psdigest のリセット・取得先。別用途の MySQL も含め、役割を移しても外さない)。未設定なら APP_HOST
 MYSQL_CMD="sudo mysql"               # DB ホスト上で root 権限の mysql クライアントを起動するコマンド
 PROFILE_DIGEST=pprof
 RESOURCES_DIGEST=proc                # bin/sample-resources.sh の出力を変換する

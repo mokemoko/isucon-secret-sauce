@@ -59,6 +59,7 @@
    - `PROBE_URLS` は必須。DB のデータを返し、ベンチ以外では変化しない GET を2〜3個（認証が要らないもの。要るなら curl に cookie やヘッダを付けた形で書く）。再起動確認（`bin/restart-check.sh`）が再起動前後の応答を比べてデータの永続化を確かめるのに使い、空だと動かない。APP_HOST 上で `curl -fsS` が通ることを確かめる
    - 認証が要る GET しか無ければ、`PROBE_CURL_ARGS` に curl の引数（cookie・ヘッダ）を書く。APP_HOST のシェルで展開されるので、認証情報はサーバ上のコマンド置換（DB から取り出すなど）で得て、手元に持ち出さない。DB を別ホストへ移したら取得元も直す
 5. `$ORC/bin/bench.sh` を1回実行し、`bench.jsonl` に pass 行が出ることを確認する（このタスクに限り本番ベンチ実行可）
+   - `analysis/<bench_id>/warnings.txt` を見て、`BENCH_WARN_RE` をベンチの出力に合わせる。整合性の警告・エラー（減点や失格につながるもの）の行に当たり、進捗などの通常の行に当たらないこと
 
 ### local：ローカル環境構築 → `$STATE/docs/local.md`
 - docker compose で、アプリ・DB・nginx をローカルで起動できるようにする

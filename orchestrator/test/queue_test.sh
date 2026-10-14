@@ -39,6 +39,37 @@ $q rank >/dev/null
 # pop・同じ task の add は置き換え
 $q pop a; $q add '{"task_id":"c","title":"comments v2","expected_gain":"low"}'
 [ "$(jq -c 'map(.task_id)' "$t/merge-queue.json")" = '["b","d","c"]' ] || { echo "FAIL pop/add"; exit 1; }
+# degree_hint: 実測より大きければ使う (e は targets の時間占有 0 だが hint 0.8 × high)。小さければ実測のまま
+$q add '{"task_id":"e","title":"internal","expected_gain":"high","targets":[{"method":"GET","uri":"/none"}],"degree_hint":0.8}' >/dev/null
+$q add '{"task_id":"f","title":"small hint","expected_gain":"high","targets":[{"method":"GET","uri":"/"}],"degree_hint":0.1}' >/dev/null
+out=$($q rank)
+[ "$(jq -c '[.queue[] | select(.task_id == "e" or .task_id == "f") | [.task_id, .priority, .degree_src]]' "$t/queue-rank.json")" = '[["e",0.8,"hint"],["f",0.6,"measured"]]' ] \
+  || { echo "FAIL degree_hint: $(jq -c .queue "$t/queue-rank.json")"; exit 1; }
+echo "$out" | grep -q '0.8 (0.8h×1)' || { echo "FAIL hint mark: $out"; exit 1; }
+$q pop e; $q pop f
+# requeue: task_id と branch を付け替え、ready_at は引き継ぐ
+r0=$(jq -r '.[] | select(.task_id == "d") | .ready_at' "$t/merge-queue.json")
+$q requeue d d2 impl/d
+[ "$(jq -c '.[] | select(.task_id == "d2") | [.ready_at, .branch]' "$t/merge-queue.json")" = "[$r0,\"impl/d\"]" ] || { echo "FAIL requeue"; exit 1; }
+$q requeue d2 d
+# 競合: 呼び出し元の git repo で origin/main と merge-tree。競合するものは ! を付けて .batch から外し、次のものから組む
+g=$t/git; git init -q --bare "$g/origin.git"; git init -q -b main "$g/w"
+( cd "$g/w" && git config user.email t@t && git config user.name t && echo base >f && git add f && git commit -qm base \
+  && git remote add origin "$g/origin.git" && git push -q origin main \
+  && git switch -qc impl/x && echo x >f && git commit -qam x && git push -q origin impl/x \
+  && git switch -q main && git switch -qc impl/y && echo y >g && git add g && git commit -qm y && git push -q origin impl/y \
+  && git switch -q main && echo main >f && git commit -qam main && git push -q origin main && git fetch -q origin )
+cp "$t/merge-queue.json" "$t/q2.bak"
+echo '[{"task_id":"x","branch":"impl/x","title":"conflicting","expected_gain":"high","batchable":true,"area":"x","ready_at":0},
+       {"task_id":"y","branch":"impl/y","title":"clean","expected_gain":"low","batchable":true,"area":"y","ready_at":0}]' \
+  | jq --argjson now "$(date +%s)" 'map(.ready_at = $now)' >"$t/merge-queue.json"
+out=$(cd "$g/w" && $q rank)
+[ "$(jq -c '[.batch, .conflicts, [.queue[] | .conflict]]' "$t/queue-rank.json")" = '[["y"],["x"],[true,false]]' ] \
+  || { echo "FAIL conflict: $(jq -c . "$t/queue-rank.json")"; exit 1; }
+echo "$out" | grep -q 'main と競合 (リベースを頼む): x' || { echo "FAIL conflict line: $out"; exit 1; }
+cp "$t/q2.bak" "$t/merge-queue.json"
+# 最新の pass ベンチに解析結果が無い (計測を止めた後) ときも落ちない
+echo '{"id":"b4","pass":true,"score":30}' >>"$t/bench.jsonl"; $q rank >/dev/null || { echo "FAIL no analysis"; exit 1; }
 # ベンチが無いときも落ちない
 rm "$t/bench.jsonl"; $q rank >/dev/null
 [ "$(jq -r '.queue | length' "$t/queue-rank.json")" = 3 ] || { echo "FAIL no bench"; exit 1; }

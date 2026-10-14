@@ -35,7 +35,7 @@
 3. マニュアルを `state/docs/manual-raw.md` に保存し、先頭にリハーサルの注記（台数・ベンチの実行方法・参照禁止のもの）を書く
 4. `~/isucon/ssh_config` に up.sh の `ssh_config` を写し、`~/.ssh/config` の先頭に Include を足す（終わったら外す）。`state/docs/hosts.txt` を書く
 5. `env.sh` を `env.example.sh` から作り、`HOSTS`・`BENCH_CMD`・`BLACKBOX_PATHS` だけ埋める（Coordinator が開始時に `BLACKBOX_PATHS` を読むため。残りは setup が埋める）
-6. 競技リポジトリを空の main にする（リハーサルは `mokemoko/isucon-test` を使い回す。前回の deploy key は消す）。`bin/deploy-key.sh mokemoko/isucon-test` を実行する。以降は RUNBOOK の手順 5 から
+6. 競技リポジトリを空の main にする（リハーサルは `mokemoko/isucon-test` を使い回す。前回の deploy key は消す）。前回分は先に `git clone --mirror` で `~/isucon/archive/<問題>/` に退避する。main の強制 push とブランチの削除は auto モードで止まるので人間が行う。`bin/deploy-key.sh mokemoko/isucon-test` を実行する。以降は RUNBOOK の手順 5 から
 7. 他の過去問は matsuu/aws-isucon の公開 AMI（ISUCON5予選〜14）で起動できる。ベンチの実行方法は各ディレクトリの README
 8. 途中で中断するときは `rehearsal/pause.sh stop`、再開は `rehearsal/pause.sh start`（IP の付け替え、マージ待ちの待ち時間の補正、`state/end` を中断した分だけ延ばす）。Coordinator には END を口頭で延ばさせない（見込みの延長幅と実際の中断がずれる）
 

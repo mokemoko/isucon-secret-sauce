@@ -12,10 +12,14 @@
 3. サーバ IP を `orchestrator/state/docs/hosts.txt` に書き、`~/isucon/ssh_config` に `Host isu1` などを書く
 4. GitHub に空の **private** リポジトリを作り、手元に clone する。Orca に `repo add` する
    - `orchestrator/env.sh` を `env.example.sh` から作り `HOSTS` だけ書いてから、`orchestrator/bin/deploy-key.sh <owner/repo>` を実行する。各サーバの鍵を書き込み可の deploy key として登録する（書き込み権限を渡す操作なので、エージェントには実行させない。auto モードで止まる）
-5. そのリポジトリのワークスペースで Claude Code を起動し、**フォルダ信頼の確認を人間が承認する**（初回だけ表示される。エージェントは代理承認できず、未承認のままだと以後の worker-start が止まる）。そのうえで次を送る：
+5. 競技リポジトリの main に、Claude Code の sandbox を切る設定を入れて push する（Claude Code の sandbox が有効だと、エージェントが `orchestrator/state/` に書けず、ssh も止まる。ワーカーの worktree にも効くようにリポジトリに入れる。エージェントの sandbox を外す操作なので、auto モードのエージェントには実行させない）
+   ```
+   mkdir -p .claude && printf '{\n  "sandbox": {\n    "enabled": false\n  }\n}\n' > .claude/settings.json && git add .claude/settings.json && git commit -m "claude: sandbox を無効にする" && git push origin main
+   ```
+6. そのリポジトリのワークスペースで Claude Code を起動し、**フォルダ信頼の確認を人間が承認する**（初回だけ表示される。エージェントは代理承認できず、未承認のままだと以後の worker-start が止まる）。そのうえで次を送る：
    「`<isucon-secret-sauce の絶対パス>/orchestrator/prompts/coordinator.md` を読んで Coordinator として開始して。END=<競技終了時刻 例 2026-10-31T18:00:00+09:00>」（END を添えなければ coordinator.md の既定値）
    （orchestrator 一式と state/ は isucon-secret-sauce 側に置いたまま使う。競技リポジトリにはコピーしない）
-6. Coordinator が run を作ったら（`orchestrator/state/run_id` ができたら）、`cd orchestrator/dashboard && env -u GOROOT go run .` でダッシュボードを起動する（run_id と終了時刻は state から読む）
+7. Coordinator が run を作ったら（`orchestrator/state/run_id` ができたら）、`cd orchestrator/dashboard && env -u GOROOT go run .` でダッシュボードを起動する（run_id と終了時刻は state から読む）
    - チームメンバーと共有する場合は `-addr <Tailscale IP>:9180` にする。**グローバル IP で公開しない**
 
 ## 競技中

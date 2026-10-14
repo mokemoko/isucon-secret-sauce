@@ -6,6 +6,7 @@
 #   <host>/queries.json   : [{fingerprint, count, sum, avg, p95, max, rows_examined_avg, rows_sent_avg, sample, (no_index_used, tmp_disk_tables)}] 秒・sum 降順
 #   <host>/profile.json   : {duration, samples, flat:[{func, flat, flat_pct, cum, cum_pct}], cum:[...]} 秒
 #   <host>/resources.json : {ncpu, t:[秒], host:{user,sys,iowait,steal,mem (%), rx,tx,rd,wr (B/s)}, procs:[{comm, cpu:[%/1コア], rss:[MB], cpu_avg, cpu_max, rss_max}]}
+#   warnings.txt          : bench.txt のうち BENCH_WARN_RE (既定 'WARN|ERROR') に当たる行。整合性の警告・エラーの増減を見る (pass でも減点になりうる)
 #   summary.md            : 上記の上位だけを詰めたテキスト (AI はまずこれを読む)
 # 変換は bin/digest/<kind>-<tool>.sh (引数 <入力> <元の出力の保存先>、stdout にスキーマ JSON)。
 # ツールは env.sh の ACCESS_DIGEST / QUERY_DIGEST / PROFILE_DIGEST で選ぶ。別のツール (pgBadger 等) が要るならアダプタを1本足す
@@ -44,11 +45,16 @@ if [ -f "$scoring" ]; then
   done
 fi
 for f in "$dir"/*/resources.raw; do [ -s "$f" ] && run resources "$RESOURCES_DIGEST" "$f" "${f%/*}/resources.json" "${f%/*}/resources.txt"; done
+[ -f "$dir/bench.txt" ] && { grep -E "${BENCH_WARN_RE:-WARN|ERROR}" "$dir/bench.txt" || true; } >"$dir/warnings.txt"
 for f in "$dir"/*/cpu.pprof; do [ -s "$f" ] && run profile "$PROFILE_DIGEST" "$f" "${f%/*}/profile.json" "${f%/*}/pprof.txt"; done
 
 {
   echo "# bench $(basename "$dir")"
   [ -n "$result" ] && echo "$result" | jq -r '"pass=\(.pass) score=\(.score)" + (if .error then " error=\(.error)" else "" end)'
+  if [ -f "$dir/warnings.txt" ]; then
+    echo "warnings=$(wc -l <"$dir/warnings.txt" | tr -d ' ') (bench.txt のうち BENCH_WARN_RE='${BENCH_WARN_RE:-WARN|ERROR}' の行。例は先頭3件)"
+    head -n3 "$dir/warnings.txt" | cut -c1-200
+  fi
   ms() { echo 'def ms: . * 1000 | round | tostring + "ms"; def sh(t): if t > 0 then (. / t * 100 | round | tostring) + "%" else "-" end;'; }
   for f in "$dir"/*/endpoints.json; do
     [ -f "$f" ] || continue

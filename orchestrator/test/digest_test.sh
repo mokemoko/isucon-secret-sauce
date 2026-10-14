@@ -52,6 +52,13 @@ J
 cat >"$t/st/docs/scoring.json" <<'J'
 {"endpoints":[{"method":"GET","uri":"/","weight":1},{"method":"*","uri":"^/image/","weight":0.5},{"method":"POST","uri":"^/[","weight":9}]}
 J
+printf '%s\n' 'level=INFO msg=start' 'level=WARN msg=mismatch CODE=33' 'level=ERROR msg=timeout' 'level=WARN msg=mismatch CODE=33' >"$t/st/analysis/b1/bench.txt"
+ENV_FILE="$t/env.sh" "$root/bin/digest.sh" "$t/st/analysis/b1"
+[ "$(wc -l <"$t/st/analysis/b1/warnings.txt" | tr -d ' ')" = 3 ] || { echo "FAIL warnings.txt"; exit 1; }
+grep -q '^warnings=3 ' "$t/st/analysis/b1/summary.md" || { echo "FAIL warnings in summary"; cat "$t/st/analysis/b1/summary.md"; exit 1; }
+echo 'BENCH_WARN_RE="CODE=33"' >"$t/env2.sh"
+ENV_FILE="$t/env2.sh" "$root/bin/digest.sh" "$t/st/analysis/b1"
+grep -q '^warnings=2 ' "$t/st/analysis/b1/summary.md" || { echo "FAIL BENCH_WARN_RE"; exit 1; }
 ENV_FILE="$t/env.sh" "$root/bin/digest.sh" "$t/st/analysis/b1"
 got=$(jq -c 'map(.weight)' "$t/st/analysis/b1/h1/endpoints.json")
 [ "$got" = '[1,null,0.5,null]' ] || { echo "FAIL weights: $got"; exit 1; }

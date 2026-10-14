@@ -11,6 +11,7 @@ TYPE=${TYPE:-t3a.medium}            # アプリのホスト
 APP_COUNT=${APP_COUNT:-1}
 BENCH_TYPE=${BENCH_TYPE:-}          # 空ならベンチ専用ホストを作らない (アプリのホストで同居実行)
 AZ=${AZ:-ap-northeast-1a}
+SUBNET=${SUBNET:-}                  # 既定 VPC が無いアカウントでは、インターネットゲートウェイへの経路がある public サブネットを指定する (VPC はそこから決まる)
 TTL_MIN=${TTL_MIN:-600}             # 消し忘れ対策: 起動から TTL_MIN 分で OS shutdown → terminate
 DIR=${DIR:-$HOME/isucon/rehearsal}
 VOL_GB=${VOL_GB:-}                  # 空なら AMI の容量のまま
@@ -21,14 +22,21 @@ mkdir -p "$DIR"
 myip=$(curl -fsS https://checkip.amazonaws.com)
 tag() { echo "ResourceType=$1,Tags=[{Key=Project,Value=$TAG},{Key=Name,Value=${2:-$TAG}}]"; }
 
+if [ -n "$SUBNET" ]; then
+  subnet=$SUBNET
+  vpc=$(aws ec2 describe-subnets --subnet-ids $subnet --query 'Subnets[0].VpcId' --output text)
+else
+  vpc=$(aws ec2 describe-vpcs --filters Name=isDefault,Values=true --query 'Vpcs[0].VpcId' --output text)
+  subnet=$(aws ec2 describe-subnets --filters Name=vpc-id,Values=$vpc Name=availability-zone,Values=$AZ Name=default-for-az,Values=true \
+    --query 'Subnets[0].SubnetId' --output text)
+fi
+[ "$vpc" != None ] && [ "$subnet" != None ] || { echo "VPC・サブネットが見つからない (既定 VPC が無ければ SUBNET=<public サブネット> を指定)" >&2; exit 1; }
+
 # key pair が既にあれば失敗する = 二重構築の防止
 aws ec2 create-key-pair --key-name $TAG --key-type ed25519 --tag-specifications "$(tag key-pair)" \
   --query KeyMaterial --output text >"$DIR/key.pem"
 chmod 600 "$DIR/key.pem"
 
-vpc=$(aws ec2 describe-vpcs --filters Name=isDefault,Values=true --query 'Vpcs[0].VpcId' --output text)
-subnet=$(aws ec2 describe-subnets --filters Name=vpc-id,Values=$vpc Name=availability-zone,Values=$AZ Name=default-for-az,Values=true \
-  --query 'Subnets[0].SubnetId' --output text)
 sg=$(aws ec2 create-security-group --group-name $TAG --description $TAG --vpc-id $vpc \
   --tag-specifications "$(tag security-group)" --query GroupId --output text)
 for p in 22 80 443; do

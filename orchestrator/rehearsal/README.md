@@ -29,7 +29,7 @@
 | ローカル検証 | Docker（問題のリポジトリ次第） | Docker（private-isu の compose） | Docker（エージェントが作る） | ローカルの予測は本番の改善率に使えない（#2 の評価） |
 
 ## 準備の手順（RUNBOOK の「開始直後」をリハーサル用に置き換えたもの）
-1. `rehearsal/up.sh` で起動する（問題ごとの `AMI`・`VOL_GB`・`BLACKBOX_DIR` は下の表）
+1. `rehearsal/up.sh` で起動する（問題ごとの `AMI`・`VOL_GB`・`BLACKBOX_DIR` は下の表）。既定 VPC が無いアカウントでは、インターネットゲートウェイへの経路がある public サブネットを `SUBNET=subnet-...` で指定する
 2. 前回の `orchestrator/state/`・`env.sh`・競技リポジトリの clone を `~/isucon/archive/<問題>/` に退避する
 3. マニュアルを `state/docs/manual-raw.md` に保存し、先頭にリハーサルの注記（台数・ベンチの実行方法・参照禁止のもの）を書く
 4. `~/isucon/ssh_config` に up.sh の `ssh_config` を写し、`~/.ssh/config` の先頭に Include を足す（終わったら外す）。`state/docs/hosts.txt` を書く
@@ -41,7 +41,7 @@
 | 問題 | 起動 | ベンチ |
 |---|---|---|
 | private-isu | `rehearsal/up.sh`（既定値） | `ssh isu1 /home/isucon/private_isu/benchmarker/bin/benchmarker -u .../userdata -t http://localhost` |
-| ISUCON14 | `AMI=ami-0fcf9e8e8675a9ee4 VOL_GB=20 BLACKBOX_DIR= rehearsal/up.sh` | `sudo systemctl disable --now isuride-payment_mock` の後、`rehearsal/isucon14-bench.sh` を `~/isu-bench.sh` に置く（`./bench run --target https://xiv.isucon.net --addr 127.0.0.1:443` の標準出力から JSON を作る） |
+| ISUCON14 | `AMI=ami-0fcf9e8e8675a9ee4 VOL_GB=20 APP_COUNT=3 TYPE=c5.large BENCH_TYPE=c6a.large BLACKBOX_DIR= rehearsal/up.sh`（本番相当の c5.large ×3 ＋ベンチ専用ホスト） | isu1〜isu3 は `sudo systemctl disable --now isuride-payment_mock`。bench ホストはアプリ一式（`isuride-go isuride-matcher isuride-payment_mock nginx mysql`）を `disable --now` し、`/etc/hosts` に isu1〜isu3 のプライベート IP を書き、`rehearsal/isucon14-bench.sh` を `~/isu-bench.sh` に置く（決済サーバは bench 上に立ち、`--payment-url` で bench のプライベート IP を渡す）。`BENCH_CMD="ssh bench /home/isucon/isu-bench.sh"`、`BLACKBOX_PATHS="/home/isucon/bench"`。向き先は ISUCON13 と同じく `TARGET=isu2` などで変えられる |
 | ISUCON13 | `AMI=ami-006d211cb716fe8a0 APP_COUNT=2 TYPE=c6a.large BENCH_TYPE=c6a.large BLACKBOX_DIR= rehearsal/up.sh`（AMI は [matsuu/aws-isucon](https://github.com/matsuu/aws-isucon)） | isu1・isu2 の `~/env.sh` の `ISUCON13_POWERDNS_SUBDOMAIN_ADDRESS` を各自のプライベート IP にして `sudo ~/webapp/pdns/init_zone.sh`・`systemctl restart isupipe-go`。bench ホストはアプリ一式を `disable --now` し、`/etc/hosts` に isu1・isu2 を書き、`rehearsal/isucon13-bench.sh` を `~/isu-bench.sh` に置く。`BENCH_CMD="ssh bench /home/isucon/isu-bench.sh"`。負荷走行の向き先は固定しない：マニュアルの注記に「向き先（名前解決の対象サーバ）は isu1・isu2 から選べる。変えるときは人間に頼む（ポータルの操作に相当）」と書き、頼まれたら人間が `BENCH_CMD="ssh bench TARGET=isu2 /home/isucon/isu-bench.sh"` に書き換える |
 
 ## リハーサル後にやること（毎回）

@@ -1,0 +1,13 @@
+# alp 設定の雛形。templates/nginx.conf の JSON ログ (alp json の既定キー) を前提にする
+# orchestrator では env.sh の ALP_ARGS="json --config <競技リポジトリ>/config/alp.yml" で使う
+sort: sum
+reverse: true
+# ID・ファイル名を含むパスは必ずまとめる (まとめないと上位が散らばってボトルネックが見えない)
+matching_groups:
+  - ^/users/[0-9]+$
+  - ^/posts/[0-9]+$
+  - ^/image/[0-9]+\.(jpg|png|gif)$
+  - ^/(css|js|img)/
+# nginx 以外 (h2o・envoy の LTSV など) は `alp ltsv` を使い、ラベル名を合わせる (templates/h2o.conf, envoy.yml)
+# ltsv:
+#   apptime_label: apptime

@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bench Detail</title>
+<style>
+/* 色トークンは index.html と揃える */
+:root {
+  --surface-0: #f4f4f2; --surface-1: #fcfcfb; --border: #e2e1dc;
+  --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #8a8984;
+  --series-1: #2a78d6; --good: #0ca30c; --warning: #fab219; --critical: #d03b3b;
+  --c1: #2a78d6; --c2: #eb6834; --c3: #1baf7a; --c4: #eda100; --c5: #e87ba4;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --surface-0: #111110; --surface-1: #1a1a19; --border: #33332f;
+    --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e86; --series-1: #3987e5;
+    --c1: #3987e5; --c2: #d95926; --c3: #199e70; --c4: #c98500; --c5: #d55181;
+  }
+}
+:root[data-theme="dark"] {
+  --surface-0: #111110; --surface-1: #1a1a19; --border: #33332f;
+  --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e86; --series-1: #3987e5;
+  --c1: #3987e5; --c2: #d95926; --c3: #199e70; --c4: #c98500; --c5: #d55181;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--surface-0); color: var(--text-primary);
+  font: 14px/1.5 system-ui, -apple-system, "Hiragino Sans", sans-serif; }
+header { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: baseline; padding: 12px 16px;
+  border-bottom: 1px solid var(--border); background: var(--surface-1); position: sticky; top: 0; z-index: 1; }
+header h1 { font-size: 16px; margin: 0; font-variant-numeric: tabular-nums; }
+header nav { margin-left: auto; display: flex; gap: 12px; font-size: 13px; }
+.kpi { display: flex; flex-direction: column; }
+.kpi b { font-size: 22px; font-variant-numeric: tabular-nums; }
+.kpi span { font-size: 12px; color: var(--text-secondary); }
+main { display: flex; flex-direction: column; gap: 16px; padding: 16px; max-width: 1400px; }
+section { background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; min-width: 0; }
+section > h2 { font-size: 13px; margin: 0 0 8px; color: var(--text-secondary); font-weight: 600; display: flex; gap: 12px; align-items: center; }
+section > h2 .sw { margin-left: auto; display: flex; gap: 4px; }
+h2.sub { font-size: 12px; margin: 8px 0 0; color: var(--text-secondary); font-weight: 600; }
+h3 { font-size: 15px; margin: 8px 0 0; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th { color: var(--text-secondary); font-weight: 500; font-size: 12px; }
+td.num, th.num { text-align: right; }
+td.sql div { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+td.sql { white-space: normal; overflow-wrap: anywhere; font-family: ui-monospace, monospace; font-size: 12px; min-width: 320px; }
+tr.click { cursor: pointer; }
+tr.click:hover td { background: var(--surface-0); }
+.scroll { overflow-x: auto; }
+.share { display: flex; align-items: center; gap: 6px; min-width: 110px; }
+.share i { display: block; height: 8px; border-radius: 0 4px 4px 0; background: var(--series-1); }
+.muted { color: var(--text-muted); }
+.ok::before { content: "✓ "; color: var(--good); }
+.ng::before { content: "✕ "; color: var(--critical); }
+.tag { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 4px; border: 1px solid var(--border); color: var(--text-secondary); }
+pre { margin: 0; font-size: 12px; overflow: auto; max-height: 600px; background: var(--surface-0); padding: 8px; border-radius: 4px; }
+button { font: inherit; font-size: 12px; background: transparent; color: var(--text-primary); border: 1px solid var(--border);
+  border-radius: 4px; padding: 2px 8px; cursor: pointer; }
+button[aria-pressed="true"] { background: var(--series-1); border-color: var(--series-1); color: #fff; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; }
+@media (max-width: 600px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+ul.msgs { margin: 0; padding-left: 18px; }
+a { color: var(--series-1); }
+svg.chart { width: 100%; height: 200px; display: block; }
+svg.chart .grid { stroke: var(--border); stroke-width: 1; }
+svg.chart text { fill: var(--text-muted); font-size: 11px; }
+svg.chart .cross { stroke: var(--text-muted); stroke-width: 1; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--text-secondary); margin: 4px 0; }
+.legend i { display: inline-block; width: 12px; height: 2px; vertical-align: middle; margin-right: 4px; }
+.facts { display: flex; flex-wrap: wrap; gap: 4px 20px; font-size: 13px; margin-bottom: 8px; }
+.facts b { font-variant-numeric: tabular-nums; }
+#tip { position: fixed; pointer-events: none; background: var(--surface-1); border: 1px solid var(--border); border-radius: 4px;
+  padding: 6px 8px; font-size: 12px; display: none; box-shadow: 0 2px 8px rgb(0 0 0 / .15); z-index: 2; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">-</h1>
+  <div class="kpi"><b id="result">-</b><span>結果</span></div>
+  <div class="kpi"><b id="score">-</b><span>スコア</span></div>
+  <div class="kpi"><b id="delta">-</b><span>前回比</span></div>
+  <div class="kpi"><b id="at">-</b><span>時刻</span></div>
+  <nav><a id="prev">← 前</a><a id="next">次 →</a><a href="/">ダッシュボード</a></nav>
+</header>
+<main id="main"></main>
+<div id="tip"></div>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt = n => n == null || isNaN(n) ? "-" : Number(n).toLocaleString();
+const sec = n => n == null ? "-" : n >= 10 ? n.toFixed(1) + "s" : n >= 1 ? n.toFixed(2) + "s" : (n * 1000).toFixed(n < 0.01 ? 1 : 0) + "ms";
+const hms = ts => ts ? new Date(ts).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : "-";
+// 前回比: 時間が減ったら ▼ (改善)、増えたら ▲。前回に無い行は new
+const delta = (cur, prev) => prev == null ? '<span class="tag">new</span>'
+  : Math.abs(cur - prev) < 0.05 ? '<span class="muted">±0</span>'
+  : `${cur < prev ? "▼" : "▲"} ${sec(Math.abs(cur - prev))}`;
+const share = (v, total) => { const p = total ? v / total * 100 : 0;
+  return `<div class="share"><i style="width:${Math.max(1, p * 0.6)}px"></i>${p.toFixed(1)}%</div>`; };
+
+const id = new URLSearchParams(location.search).get("id");
+async function getJSON(url) { try { const r = await fetch(url); return r.ok ? await r.json() : null; } catch { return null; } }
+async function getText(url) { const r = await fetch(url); return r.ok ? r.text() : `(取得できません: ${r.status})`; }
+
+// 表と元の出力の切り替え。元の出力は大きいことがあるので押されたときに読む
+function panel(title, body, rawUrl) {
+  const k = "p" + Math.random().toString(36).slice(2);
+  return `<section data-k="${k}"><h2>${title}<span class="sw">
+      <button aria-pressed="true" data-v="tbl">表</button>${rawUrl ? `<button aria-pressed="false" data-v="raw" data-url="${esc(rawUrl)}">元の出力</button>` : ""}</span></h2>
+    <div data-pane="tbl">${body}</div><div data-pane="raw" hidden></div></section>`;
+}
+document.addEventListener("click", async e => {
+  const b = e.target.closest("button[data-v]");
+  if (b) {
+    const s = b.closest("section");
+    s.querySelectorAll("button[data-v]").forEach(x => x.setAttribute("aria-pressed", x === b));
+    s.querySelectorAll("[data-pane]").forEach(p => p.hidden = p.dataset.pane !== b.dataset.v);
+    const raw = s.querySelector('[data-pane="raw"]');
+    if (b.dataset.v === "raw" && !raw.dataset.loaded) {
+      raw.dataset.loaded = 1; raw.innerHTML = '<span class="muted">読み込み中…</span>';
+      const t = await getText(b.dataset.url), lines = t.split("\n"), MAX = 3000;
+      raw.innerHTML = `<pre>${esc(lines.slice(0, MAX).join("\n"))}</pre>` +
+        (lines.length > MAX ? `<p class="muted">先頭 ${MAX} 行のみ表示（全 ${fmt(lines.length)} 行）。<a href="${esc(b.dataset.url)}" target="_blank">全文</a></p>` : "");
+    }
+    return;
+  }
+  const tr = e.target.closest("tr[data-detail]");
+  if (tr) { const d = tr.nextElementSibling; d.hidden = !d.hidden; }
+});
+
+function endpointsTable(rows, prev) {
+  const total = rows.reduce((a, r) => a + r.sum, 0);
+  const pm = new Map((prev || []).map(r => [r.method + " " + r.uri, r]));
+  const hasW = rows.some(r => r.weight != null); // docs/scoring.json があるときだけ
+  const wShare = hasW ? rows.filter(r => r.weight > 0).reduce((a, r) => a + r.sum, 0) / (total || 1) * 100 : null;
+  return `<p class="muted">合計 ${sec(total)} / ${fmt(rows.reduce((a, r) => a + r.count, 0))} リクエスト${hasW ? `。加点のあるエンドポイントの時間比率 ${wShare.toFixed(0)}%（重みは scoring.json の成功1件あたり。- は未記載）` : ""}</p><div class="scroll"><table>
+    <tr>${hasW ? '<th class="num">重み</th>' : ""}<th>シェア</th><th class="num">合計</th><th class="num">前回比</th><th class="num">回数</th><th class="num">平均</th><th class="num">p99</th><th class="num">最大</th><th class="num">4xx</th><th class="num">5xx</th><th>method</th><th>uri</th></tr>
+    ${rows.map(r => { const p = prev ? pm.get(r.method + " " + r.uri) : undefined; return `<tr>
+      ${hasW ? `<td class="num">${r.weight ?? '<span class="muted">-</span>'}</td>` : ""}<td>${share(r.sum, total)}</td><td class="num">${sec(r.sum)}</td><td class="num">${prev ? delta(r.sum, p?.sum) : "-"}</td>
+      <td class="num">${fmt(r.count)}</td><td class="num">${sec(r.avg)}</td><td class="num">${sec(r.p99)}</td><td class="num">${sec(r.max)}</td>
+      <td class="num">${r.status["4xx"] || ""}</td><td class="num">${r.status["5xx"] || ""}</td><td>${esc(r.method)}</td><td>${esc(r.uri)}</td></tr>`; }).join("")}
+  </table></div>`;
+}
+
+function queriesTable(rows, prev) {
+  const total = rows.reduce((a, r) => a + r.sum, 0);
+  const pm = new Map((prev || []).map(r => [r.fingerprint, r]));
+  const ni = rows.some(r => r.no_index_used != null); // digest 集計 (psdigest) のときだけある列
+  return `<p class="muted">合計 ${sec(total)}（上位 ${rows.length} 種）。行をクリックするとサンプル SQL を表示</p><div class="scroll"><table>
+    <tr><th>シェア</th><th class="num">合計</th><th class="num">前回比</th><th class="num">回数</th><th class="num">平均</th><th class="num">p95</th><th class="num">走査行/回</th><th class="num">返却行/回</th>${ni ? '<th class="num">index未使用</th>' : ""}<th>fingerprint</th></tr>
+    ${rows.map(r => `<tr class="click" data-detail>
+      <td>${share(r.sum, total)}</td><td class="num">${sec(r.sum)}</td><td class="num">${prev ? delta(r.sum, pm.get(r.fingerprint)?.sum) : "-"}</td>
+      <td class="num">${fmt(r.count)}</td><td class="num">${sec(r.avg)}</td><td class="num">${sec(r.p95)}</td>
+      <td class="num">${fmt(r.rows_examined_avg)}</td><td class="num">${fmt(r.rows_sent_avg)}</td>${ni ? `<td class="num">${r.no_index_used ? fmt(r.no_index_used) : ""}</td>` : ""}<td class="sql"><div>${esc(r.fingerprint)}</div></td></tr>
+      <tr hidden><td colspan="${ni ? 10 : 9}"><pre style="white-space:pre-wrap">fingerprint: ${esc(r.fingerprint)}\n\nsample: ${esc(r.sample)}</pre></td></tr>`).join("")}
+  </table></div>`;
+}
+
+function profileTables(p) {
+  const t = (rows, label) => `<div><h2 class="sub">${label}</h2><div class="scroll"><table>
+    <tr><th class="num">flat%</th><th class="num">cum%</th><th class="num">cum</th><th>関数</th></tr>
+    ${rows.map(r => `<tr><td class="num">${r.flat_pct}%</td><td class="num">${r.cum_pct}%</td><td class="num">${sec(r.cum)}</td><td>${esc(r.func)}</td></tr>`).join("") ||
+      '<tr><td colspan="4" class="muted">なし</td></tr>'}</table></div></div>`;
+  return `<p class="muted">サンプル ${sec(p.samples)} / 計測 ${sec(p.duration)}（CPU 使用率 ${p.duration ? (p.samples / p.duration * 100).toFixed(0) : "-"}%、1コア換算）</p>
+    <div class="grid2">${t(p.flat.slice(0, 15), "自身の時間 (flat) 上位")}${t(p.cum.filter(r => r.func.startsWith("main.")).slice(0, 15), "累積 (cum) 上位：アプリの main パッケージ")}</div>`;
+}
+
+// 折れ線 (共通の y 軸1本)。series: [{name, values, color}]。マウス位置の時刻の全系列の値をツールチップに出す
+const charts = [];
+function lineChart(t, series, yMax, unit) {
+  const k = charts.push({ t, series, yMax, unit }) - 1;
+  return `<div class="legend">${series.map(s => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join("")}</div>
+    <svg class="chart" data-chart="${k}" role="img" aria-label="${esc(series.map(s => s.name).join(", "))} の推移"></svg>`;
+}
+function drawCharts() {
+  document.querySelectorAll("svg[data-chart]").forEach(svg => {
+    const c = charts[svg.dataset.chart], W = svg.clientWidth || 800, H = 200, L = 44, R = 12, T = 8, B = 20;
+    const n = c.t.length, tmax = c.t[n - 1] || 1;
+    const x = v => L + (W - L - R) * v / tmax, y = v => T + (H - T - B) * (1 - Math.min(v, c.yMax) / c.yMax);
+    let g = "";
+    for (let i = 0; i <= 4; i++) { const v = c.yMax * i / 4;
+      g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${Math.round(v)}${c.unit}</text>`; }
+    for (let i = 0; i <= 5; i++) { const v = tmax * i / 5; g += `<text x="${x(v)}" y="${H - 4}" text-anchor="middle">${Math.round(v)}s</text>`; }
+    c.series.forEach(s => { g += `<path d="${s.values.map((v, i) => `${i ? "L" : "M"}${x(c.t[i]).toFixed(1)},${y(v).toFixed(1)}`).join("")}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round"/>`; });
+    g += `<line class="cross" y1="${T}" y2="${H - B}" visibility="hidden"/><rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/>`;
+    svg.innerHTML = g;
+    const cross = svg.querySelector(".cross"), tip = $("tip");
+    svg.querySelector("rect").onmousemove = e => {
+      const px = e.clientX - svg.getBoundingClientRect().left, tv = (px - L) / (W - L - R) * tmax;
+      let i = 0; c.t.forEach((v, j) => { if (Math.abs(v - tv) < Math.abs(c.t[i] - tv)) i = j; });
+      cross.setAttribute("x1", x(c.t[i])); cross.setAttribute("x2", x(c.t[i])); cross.setAttribute("visibility", "visible");
+      tip.innerHTML = `<b>${c.t[i]}s</b><br>` + c.series.map(s => `<i style="display:inline-block;width:10px;height:2px;background:${s.color};vertical-align:middle"></i> ${esc(s.name)} ${s.values[i]}${c.unit}`).join("<br>");
+      tip.style.display = "block"; tip.style.left = Math.min(e.clientX + 12, innerWidth - 240) + "px"; tip.style.top = e.clientY + 12 + "px";
+    };
+    svg.querySelector("rect").onmouseleave = () => { cross.setAttribute("visibility", "hidden"); tip.style.display = "none"; };
+  });
+}
+addEventListener("resize", drawCharts);
+
+function resourcesView(r) {
+  const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0, max = a => a.length ? Math.max(...a) : 0;
+  const mb = v => (v / 1048576).toFixed(1) + "MB/s", busy = r.host.user.map((v, i) => v + r.host.sys[i]);
+  const top = r.procs.slice(0, 5), pmax = Math.max(100, ...top.flatMap(p => p.cpu));
+  return `<div class="facts">
+      <span>CPU（user+sys）平均 <b>${avg(busy).toFixed(0)}%</b> / 最大 <b>${max(busy).toFixed(0)}%</b>（${r.ncpu} コア全体）</span>
+      <span>iowait 平均 <b>${avg(r.host.iowait).toFixed(1)}%</b></span><span>steal 平均 <b>${avg(r.host.steal).toFixed(1)}%</b></span>
+      <span>メモリ最大 <b>${max(r.host.mem).toFixed(0)}%</b></span>
+      <span>ネットワーク rx/tx 平均 <b>${mb(avg(r.host.rx))}</b> / <b>${mb(avg(r.host.tx))}</b></span>
+      <span>ディスク read/write 平均 <b>${mb(avg(r.host.rd))}</b> / <b>${mb(avg(r.host.wr))}</b></span></div>
+    <div class="grid2">
+      <div><h2 class="sub">ホスト CPU（全コア = 100%）</h2>${lineChart(r.t, [
+        { name: "user", values: r.host.user, color: "var(--c1)" }, { name: "sys", values: r.host.sys, color: "var(--c2)" },
+        { name: "iowait", values: r.host.iowait, color: "var(--c3)" }], 100, "%")}</div>
+      <div><h2 class="sub">プロセス別 CPU（1コア = 100%、上位5）</h2>${lineChart(r.t, top.map((p, i) => ({ name: p.comm, values: p.cpu, color: `var(--c${i + 1})` })), Math.ceil(pmax / 100) * 100, "%")}</div>
+    </div>
+    <div class="scroll"><table><tr><th>プロセス（同名は合算）</th><th class="num">CPU 平均</th><th class="num">CPU 最大</th><th class="num">RSS 最大</th></tr>
+      ${r.procs.map(p => `<tr><td>${esc(p.comm)}</td><td class="num">${p.cpu_avg}%</td><td class="num">${p.cpu_max}%</td><td class="num">${fmt(Math.round(p.rss_max))}MB</td></tr>`).join("")}</table></div>`;
+}
+
+function messages(row) {
+  const ms = row.messages || [];
+  if (!ms.length) return "";
+  // 末尾の (GET /xxx) を外して種類ごとに数える
+  const g = {}; ms.forEach(m => { const k = m.replace(/\s*\([^)]*\)\s*$/, ""); g[k] = (g[k] || 0) + 1; });
+  const list = Object.entries(g).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<li>${esc(k)} <b>×${n}</b></li>`).join("");
+  return panel(`ベンチのメッセージ（${ms.length} 件${row.fail != null ? `、fail ${fmt(row.fail)}` : ""}）`,
+    `<ul class="msgs">${list}</ul>`, `/state/analysis/${id}/bench.txt`);
+}
+
+async function main() {
+  const info = await getJSON("/api/bench?id=" + encodeURIComponent(id || ""));
+  if (!info || !info.row) { $("main").innerHTML = `<section>ベンチ ${esc(id)} が見つかりません</section>`; return; }
+  const r = info.row, p = info.prev;
+  document.title = "Bench " + r.id;
+  $("title").textContent = r.id;
+  $("result").innerHTML = `<span class="${r.pass ? "ok" : "ng"}">${r.pass ? "pass" : "fail"}</span>`;
+  $("score").textContent = fmt(r.score);
+  $("delta").textContent = p && p.score ? ((r.score - p.score) / p.score * 100).toFixed(1).replace(/^(?!-)/, "+") + "%" : "-";
+  $("at").textContent = hms(r.ts);
+  for (const [k, v] of [["prev", p], ["next", info.next]]) {
+    if (v) $(k).href = "?id=" + encodeURIComponent(v.id); else $(k).classList.add("muted");
+  }
+  let html = `<section><div>${esc(r.note)}${r.restart_check ? ' <span class="tag">再起動確認</span>' : ""}</div>
+    <div class="muted">sha ${esc((r.sha || "").slice(0, 10))}${r.task ? ` · task ${esc(r.task)}` : ""}${r.error ? ` · ${esc(r.error)}` : ""}
+    · 比較対象 ${p ? `<a href="?id=${encodeURIComponent(p.id)}">${esc(p.id)}</a>` : "なし"}</div></section>`;
+  html += messages(r);
+  html += panel("AI 向け要約 (summary.md)", `<p class="muted">Analyst・Coordinator が最初に読む要約。「元の出力」で表示</p>`, `/state/analysis/${id}/summary.md`);
+
+  const hosts = Object.keys(info.hosts).sort();
+  for (const h of hosts) {
+    const has = f => info.hosts[h].includes(f), base = `/state/analysis/${id}/${h}/`, pbase = p ? `/state/analysis/${p.id}/${h}/` : null;
+    const load = f => has(f) ? getJSON(base + f) : null;
+    const [ep, q, prof, res, pep, pq] = await Promise.all([load("endpoints.json"), load("queries.json"), load("profile.json"), load("resources.json"),
+      pbase && has("endpoints.json") ? getJSON(pbase + "endpoints.json") : null, pbase && has("queries.json") ? getJSON(pbase + "queries.json") : null]);
+    html += `<h3>${esc(h)}</h3>`;
+    if (res && res.t.length) html += panel("リソース推移（ベンチ中、1秒ごと）", resourcesView(res), has("resources.txt") ? base + "resources.txt" : null);
+    if (!ep && !q && !prof && !res) { html += `<section class="muted">解析データなし（計測無効化後など）</section>`; continue; }
+    if (ep) html += panel("エンドポイント（合計時間順）", endpointsTable(ep, pep), has("access.alp.txt") ? base + "access.alp.txt" : null);
+    if (q) html += panel("クエリ（合計時間順）", queriesTable(q, pq), info.hosts[h].find(f => f.endsWith(".pt.txt")) ? base + info.hosts[h].find(f => f.endsWith(".pt.txt")) : null);
+    if (prof) html += panel("CPU プロファイル", profileTables(prof), has("pprof.txt") ? base + "pprof.txt" : null);
+  }
+  $("main").innerHTML = html;
+  drawCharts();
+}
+main();
+</script>
+</body>
+</html>

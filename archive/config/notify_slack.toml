@@ -1,6 +1,6 @@
 # https://github.com/catatsuy/notify_slack
 [slack]
-url = "https://hooks.slack.com/services/REDACTED"
+url = "https://hooks.slack.com/services/REDACTED"   # 実値は git 履歴にある。不要なら Slack 側で無効化する
 token = "SLACK_TOKEN"
 channel = "#isucon-notify"
 username = "notify"

@@ -10,6 +10,7 @@
 |---|---|---|---|---|---|---|
 | 1 | 2026-10-11 | private-isu（catatsuy_private_isu_amd64_20260524） | t3a.medium ×1、アプリ＋ベンチ同居 | 0 → 70,012（約1時間30分、ベンチ21回）。最初の7回は 0 点 | Phase 1〜改善サイクルの通し、bench lane の直列化、ダッシュボード、人間の示唆・ゲート | 課題 1〜13（対応済み） |
 | 2 | 2026-10-12〜13 | ISUCON14（公式 AMI isucon14-20260818100152） | t3a.medium ×1（20GB）、アプリ＋ベンチ同居 | 初期 534〜717 → ベスト 15,290（再起動確認時）、最終 main 77170bd で 11,041。ベンチ32回、マージ19件（うち1件 revert）。稼働は約1時間35分（途中で EC2 を停止して約4時間中断） | digest 集計（32回すべてで summary.md。欠けたのは ssh 切断の1回だけ）、ssh 越しのリソース取得、`insights.md` の運用、マージ待ちの列、決済 API のある問題での Phase 1、EC2 停止を挟んだ中断・再開、Analyst による DB 集計での律速特定、ブラックボックスの遵守（ベンチの代わりにアクセスログから k6 シナリオを作った）。`scoring.json` はライドの結果で採点される問題のため、エンドポイントの重みが空 | 課題 14〜29（対応済み） |
+| 3 | 2026-10-14 | ISUCON13（matsuu/aws-isucon の AMI isucon13-20231128102223） | c6a.large ×2（isu1・isu2）＋ベンチ専用 c6a.large ×1 | 初期 4,188〜4,707 → 最終 151,219（main a3aa905、再起動確認）。ベンチ21回、採用20件（revert 0、0点1回）。稼働は約1時間10分（14:22〜15:19、16:10〜16:25。間は人間が停止） | 複数台（2台の並列 deploy、DB の別ホスト化を Analyst が初回から提案し採用）、ベンチ専用ホスト、サーバ側で git 化して push（auto モードで止まらない）、まとめて適用（3回・7件）、再起動確認をまとめて行うこと（途中は0回）、`local/.env` | `../ISSUE.md` の 1〜11（評価は下の「#3 の評価」） |
 
 ## 本番との構成差分
 
@@ -42,6 +43,20 @@
 | private-isu | `rehearsal/up.sh`（既定値） | `ssh isu1 /home/isucon/private_isu/benchmarker/bin/benchmarker -u .../userdata -t http://localhost` |
 | ISUCON14 | `AMI=ami-0fcf9e8e8675a9ee4 VOL_GB=20 BLACKBOX_DIR= rehearsal/up.sh` | `sudo systemctl disable --now isuride-payment_mock` の後、`rehearsal/isucon14-bench.sh` を `~/isu-bench.sh` に置く（`./bench run --target https://xiv.isucon.net --addr 127.0.0.1:443` の標準出力から JSON を作る） |
 | ISUCON13 | `AMI=ami-006d211cb716fe8a0 APP_COUNT=2 TYPE=c6a.large BENCH_TYPE=c6a.large BLACKBOX_DIR= rehearsal/up.sh`（AMI は [matsuu/aws-isucon](https://github.com/matsuu/aws-isucon)） | isu1・isu2 の `~/env.sh` の `ISUCON13_POWERDNS_SUBDOMAIN_ADDRESS` を各自のプライベート IP にして `sudo ~/webapp/pdns/init_zone.sh`・`systemctl restart isupipe-go`。bench ホストはアプリ一式を `disable --now` し、`/etc/hosts` に isu1・isu2 を書き、`rehearsal/isucon13-bench.sh` を `~/isu-bench.sh` に置く。`BENCH_CMD="ssh bench /home/isucon/isu-bench.sh"` |
+
+## リハーサル後にやること（毎回）
+1. **片付けの確認**。全部確かめてから評価に入る
+   - AWS：`rehearsal/down.sh` の最後に「clean」と出ること
+   - deploy key：`gh repo deploy-key list -R mokemoko/isucon-test` が空（`gh repo deploy-key delete` で消す）
+   - ssh：`~/.ssh/config` を退避しておいた元に戻し、`~/isucon/ssh_config` を消す
+   - docker：`docker compose ls -a` が空。リハーサルの時間帯に作られたイメージ・匿名ボリュームを消す（作成日時で見分ける。他のプロジェクトのものに触れない）
+   - Orca：`~/orca/workspaces/<repo>/` に worktree が残っていない
+2. **評価**（`## #N の評価` として下に書く）
+   - **作業時間の割合**：Phase 1 の所要、ベンチ枠の稼働率、ベンチの内訳（変更の測定・ベースライン・再起動確認・retry）、Implementer の作業時間と待ち時間、人間待ち。律速と改善できる点
+   - **解法の妥当性と検討漏れ**：公式の解説・講評、上位チームの参加記と、実施した打ち手を比べる
+   - **自作ベンチ（localbench）の品質**：verify の利用と見逃し、run.sh の有無と使われ方
+   - 材料：`state/bench.jsonl`・`verdicts.jsonl`・`analysis/*/`・`reports/`・`docs/insights.md`、`orca orchestration task-list --run <run_id> --json`、Coordinator のセッション記録（`~/.claude/projects/<競技リポジトリのパス>/*.jsonl`）
+3. 仕組みの課題は `../ISSUE.md` に足す。**過去問の解法・問題固有の打ち手は ISSUE.md・`knowledge/`・`prompts/` に書かず、このファイルに書く**
 
 ## #2 の評価（ISUCON14）
 
@@ -90,3 +105,49 @@
 
 - 評価：**順位付けには使えなかった**。大半の予測が ±1% 前後に固まり、符号が逆のものもある。スコアの揺れ（CV 約13%）が大きく、負荷が固定のため「速くなると負荷が増えて得点が伸びる」動きを再現できない。一方で、`verify.sh` による応答の差分の検査は、正しさの確認として役に立った
 - 対応：課題11に統合する（予測の扱いを見直す）
+
+## #3 の評価（ISUCON13）
+
+構成差分：本番は c5.large ×3 でポータルが負荷走行の向き先（名前解決の対象サーバ）を選べるが、リハーサルはアプリ用 2台で、向き先を isu1 に固定した（マニュアルの注記）。
+
+### 作業時間の割合
+稼働は約1時間10分（14:22〜15:19、16:10〜16:25。間の51分は人間が Coordinator を止めた）。
+
+| 区分 | 時間・割合 | 所見 |
+|---|---|---|
+| Phase 1 | 開始から最初のベンチまで9分、ベースライン3回の終了まで14分（#2 は18分・22分） | setup は10分。サーバ側で git 化して push する方式で、auto モードの判定には止まらなかった（課題14 の確認）。localbench-init は17分で並行 |
+| 人間待ち | Phase 2 開始の承認に10分、0点時の判断に1分、DB 分離の承認は待ちなし | **Phase 2 開始のゲートが最大の空き**（稼働の約14%） |
+| ベンチ枠 | Phase 2（14:51〜15:18）は稼働 76%、Phase 3（16:10〜16:24）はほぼ 100%。1回は約2分（初期化16秒・整合性チェック31秒・負荷60秒・回収） | 判断の空きは小さい |
+| ベンチの内訳 | 21回：変更の測定15（0点1回と、その解消1回を含む）、ベースライン3、再起動確認2、retry 0 | 変更を測らないベンチは 5/21（#2 は 1/4）。**まとめて適用が3回で7件**、途中の再起動確認は0回。最終の再起動確認は、その後に DB 分離などを入れたため2回やり直した |
+| Implementer | 作業時間は 1〜8分（中央値 約4分）。開始直後に8件を同時に起動した（規定は最大3） | 実装は速い。律速は引き続きベンチ枠 |
+
+→ 改善点
+1. Phase 2 開始のゲートを期限付き（既定は承認）にし、10分の空きをなくす
+2. **DB 分離（最大の伸び：109,897 → 146,972、+34%）が、完成から1時間半近く遅れた**。14:56 に完成し、15:14 に列の先頭（`.batch`）になったが、Coordinator は MySQL 設定のまとめ（再起動リスクありの1件を含めて独自にまとめた）を先に流して0点を出し、再開後は競合のリベース待ちになった。列の順位を飛ばすときの条件と、`restart_risk` のものを独自にまとめない規則を守らせる
+3. 最終の再起動確認は、最後のマージの後に1回だけ行う
+4. Implementer の同時数（規定3）を Coordinator が守らなかった。実装は速くベンチ枠が律速なので、上限を見直すか、守らせるかを決める
+
+### 公開されている解法との比較
+参照：[公式の解説と講評](https://isucon.net/archives/58001272.html)、[結果](https://isucon.net/archives/57993937.html)（1位 468,006、9位 147,649、10位 135,709）、[9位チームの参加記](https://scrapbox.io/tondol-pub/ISUCON13%E3%81%AB%E3%81%8F%E3%81%99%E3%82%B5%E3%83%9DISUCON%E9%83%A8%E3%81%A8%E3%81%97%E3%81%A6%E5%8F%82%E5%8A%A0%E3%81%97%E3%80%819%E4%BD%8D%E3%81%AB%E3%81%AA%E3%82%8A%E3%81%BE%E3%81%97%E3%81%9F)
+
+| 打ち手 | 公式・上位チーム | リハ#3 |
+|---|---|---|
+| インデックス一括、統計・livecomment・reaction・search の N+1 | 序盤の定番（インデックスだけで約3倍） | すべて実施（インデックスで 4,942 → 13,500） |
+| アイコンの hash を保持・If-None-Match で 304 | 想定解 | 実施（メモリキャッシュ＋304） |
+| users・themes・tags などのキャッシュ、NG ワード・moderate の改善 | 中盤 | 実施 |
+| アプリの DB を別ホストへ | 上位の大きな伸び（9位：32,711 → 52,004） | Analyst が初回の仮説で提案し採用（+34%）。ただし採用が遅れた（上記） |
+| **DNS：TTL を伸ばす、PowerDNS のキャッシュ、isudns のインデックス、DNS 用 DB の分離、水責めへの遅延・無応答** | 公式が主要なボトルネックとして解説 | **未着手**。pdns のクエリログ停止だけ。最終でも isu1 の mysqld（DNS のバックエンド）が1コアの72%を使っていた |
+| **負荷走行の向き先（名前解決の対象）の選択** | 9位：向き先を変えて isu1 をアプリ専用に（72,957 → 128,660） | リハーサルでは isu1 に固定したため選べなかった（環境の制約） |
+| ユーザー登録の pdnsutil 呼び出しを DB への直接 INSERT に | 定番 | 実装済みだがマージ待ちのまま終了 |
+
+→ 検討漏れは DNS 系。原因は2つ
+1. **計測の死角**：アクセスログは HTTP だけで、DNS の負荷が見えない。さらに DB 分離後に `DB_HOSTS` を isu2 だけにしたため、isu1 の DNS 用 MySQL がクエリ集計から外れた。resources では isu1 の mysqld が 72% と出ていたが、Analyst は DNS と結び付けなかった
+2. **クエリ集計の欠落**：performance_schema の digest 集計は、プリペアドステートメント（バイナリプロトコル）で実行されたクエリを集計しない可能性が高い。interpolateParams を入れる前のベンチでは、上位30件の SELECT が4件しかなく、重い SELECT が見えなかった（入れた後の 161052 からは SELECT が18件）
+
+スコアは 2台・約1時間10分で 151,219（9位相当）。打ち手の妥当性は高く、DNS 系を加えれば伸びしろが大きい。
+
+### 自作ベンチ（localbench）の品質
+- verify.sh：初期化から書き込みまでの86ステップと、不変条件（アイコンの2秒反映・304、moderate の削除、NG の 400、Tip の合計）を約20秒で確かめる。アプリの変更では16件ほどで使われ、本番で整合性の fail は0件。**正しさの門番として機能した**
+- 見逃し：0点の1回は pdns.conf の権限（設定ファイルの配置）で、ローカル環境に nginx・DNS が無いため検査の対象外。設定の変更には効かない
+- run.sh（負荷）は作られず、Implementer も「時間制約」「1案のみ」で負荷の比較をしなかった。方式を比べる場面がなかったので影響はない
+- 補足：setup は pdns.conf を「認証情報を含む」として auto モードでリポジトリに入れられず、後の設定タスクが別の権限で配置して0点を出した。秘密を含む設定ファイルの扱いを決めておく

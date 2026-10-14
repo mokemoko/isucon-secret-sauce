@@ -13,3 +13,4 @@ orchestrator 以前（2021〜2022年ごろ）の手作業向けの道具。**エ
 | `snippet/profiler.md` | Cloud Profiler（外部の GCP にプロファイルを送る）。pprof を使う |
 | `snippet/nginx-lua.md` | 中身が空 |
 | `nginx-sticky.md` | 外部モジュール / nginx Plus 前提で ISUCON では使えない。標準の `hash` を使う方法は `knowledge/middleware.md` |
+| `mysql.md`、`netdata.md`、`snippet/async.go` | origin/main 側で 2023 年に足されていたメモ（テーブル容量の確認・index・generated column、netdata の導入、非同期キューの雛形）。未整理。使うなら `knowledge/`・`templates/` に移して整理する |

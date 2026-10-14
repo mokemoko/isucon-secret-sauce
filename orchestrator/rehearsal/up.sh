@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# リハーサル用の過去問を1台構築する (ベンチマーカーは同居実行)。後片付けは down.sh
-# 例: AMI=ami-0fcf9e8e8675a9ee4 VOL_GB=20 BLACKBOX_DIR= rehearsal/up.sh   (ISUCON14。既定は private-isu)
-# 作るもの: key pair / security group (自IPから22,80,443のみ) / EC2 1台。全て tag Project=isucon-rehearsal
+# リハーサル用の過去問を構築する。後片付けは down.sh
+# 例: AMI=ami-006d211cb716fe8a0 APP_COUNT=2 TYPE=c6a.large BENCH_TYPE=c6a.large BLACKBOX_DIR= rehearsal/up.sh   (ISUCON13)
+#     既定は private-isu を1台 (ベンチは同居)
+# 作るもの: key pair / security group (自IPから22,80,443、グループ内は全通信) / EC2 (isu1..isuN と、BENCH_TYPE があれば bench)。
+#   全て tag Project=isucon-rehearsal、Name=<isu1|bench>。$DIR/ssh_config と $DIR/hosts.tsv (名前 公開IP プライベートIP) を書く
 set -euo pipefail
 TAG=isucon-rehearsal
 AMI=${AMI:-ami-09201e964bee13733}   # catatsuy_private_isu_amd64_20260524
-TYPE=${TYPE:-t3a.medium}
+TYPE=${TYPE:-t3a.medium}            # アプリのホスト
+APP_COUNT=${APP_COUNT:-1}
+BENCH_TYPE=${BENCH_TYPE:-}          # 空ならベンチ専用ホストを作らない (アプリのホストで同居実行)
 AZ=${AZ:-ap-northeast-1a}
 TTL_MIN=${TTL_MIN:-600}             # 消し忘れ対策: 起動から TTL_MIN 分で OS shutdown → terminate
 DIR=${DIR:-$HOME/isucon/rehearsal}
@@ -15,7 +19,7 @@ BLACKBOX_DIR=${BLACKBOX_DIR-/home/isucon/private_isu/benchmarker}
 
 mkdir -p "$DIR"
 myip=$(curl -fsS https://checkip.amazonaws.com)
-tag() { echo "ResourceType=$1,Tags=[{Key=Project,Value=$TAG},{Key=Name,Value=$TAG}]"; }
+tag() { echo "ResourceType=$1,Tags=[{Key=Project,Value=$TAG},{Key=Name,Value=${2:-$TAG}}]"; }
 
 # key pair が既にあれば失敗する = 二重構築の防止
 aws ec2 create-key-pair --key-name $TAG --key-type ed25519 --tag-specifications "$(tag key-pair)" \
@@ -30,6 +34,7 @@ sg=$(aws ec2 create-security-group --group-name $TAG --description $TAG --vpc-id
 for p in 22 80 443; do
   aws ec2 authorize-security-group-ingress --group-id $sg --protocol tcp --port $p --cidr "$myip/32" >/dev/null
 done
+aws ec2 authorize-security-group-ingress --group-id $sg --protocol -1 --source-group $sg >/dev/null
 
 # isucon ユーザーでも同じ鍵で入れるようにする
 userdata=$(cat <<EOF
@@ -42,22 +47,37 @@ b=$BLACKBOX_DIR
 [ -n "\$b" ] && [ -d \$b/bin ] && find \$b -mindepth 1 -maxdepth 1 ! -name bin ! -name userdata -exec rm -rf {} +
 EOF
 )
-id=$(aws ec2 run-instances --image-id $AMI --instance-type $TYPE --key-name $TAG \
-  --subnet-id $subnet --security-group-ids $sg --associate-public-ip-address \
-  ${VOL_GB:+--block-device-mappings "DeviceName=$(aws ec2 describe-images --image-ids $AMI --query 'Images[0].RootDeviceName' --output text),Ebs={VolumeSize=$VOL_GB,VolumeType=gp3,DeleteOnTermination=true}"} \
-  --instance-initiated-shutdown-behavior terminate --user-data "$userdata" \
-  --tag-specifications "$(tag instance)" "$(tag volume)" \
-  --query 'Instances[0].InstanceId' --output text)
-echo "instance $id 起動待ち..." >&2
-aws ec2 wait instance-running --instance-ids $id
-ip=$(aws ec2 describe-instances --instance-ids $id --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
+bdm=
+if [ -n "$VOL_GB" ]; then
+  bdm="DeviceName=$(aws ec2 describe-images --image-ids $AMI --query 'Images[0].RootDeviceName' --output text),Ebs={VolumeSize=$VOL_GB,VolumeType=gp3,DeleteOnTermination=true}"
+fi
+launch() { # name type
+  aws ec2 run-instances --image-id $AMI --instance-type $2 --key-name $TAG \
+    --subnet-id $subnet --security-group-ids $sg --associate-public-ip-address \
+    ${bdm:+--block-device-mappings "$bdm"} \
+    --instance-initiated-shutdown-behavior terminate --user-data "$userdata" \
+    --tag-specifications "$(tag instance $1)" "$(tag volume $1)" \
+    --query 'Instances[0].InstanceId' --output text
+}
+names=(); ids=()
+for i in $(seq 1 "$APP_COUNT"); do names+=(isu$i); ids+=("$(launch isu$i "$TYPE")"); done
+[ -z "$BENCH_TYPE" ] || { names+=(bench); ids+=("$(launch bench "$BENCH_TYPE")"); }
+echo "instance ${ids[*]} 起動待ち..." >&2
+aws ec2 wait instance-running --instance-ids "${ids[@]}"
 
-cat >"$DIR/ssh_config" <<EOF
-Host isu1
-  HostName $ip
+: >"$DIR/ssh_config"; : >"$DIR/hosts.tsv"
+for k in "${!ids[@]}"; do
+  read -r pub priv < <(aws ec2 describe-instances --instance-ids "${ids[$k]}" \
+    --query 'Reservations[0].Instances[0].[PublicIpAddress,PrivateIpAddress]' --output text)
+  printf '%s\t%s\t%s\n' "${names[$k]}" "$pub" "$priv" >>"$DIR/hosts.tsv"
+  cat >>"$DIR/ssh_config" <<EOF
+Host ${names[$k]}
+  HostName $pub
   User isucon
   IdentityFile $DIR/key.pem
   UserKnownHostsFile $DIR/known_hosts
   StrictHostKeyChecking accept-new
 EOF
-echo "ok: $id $ip  (ssh -F $DIR/ssh_config isu1)  自動削除: 起動から ${TTL_MIN} 分後"
+done
+cat "$DIR/hosts.tsv"
+echo "ok: (ssh -F $DIR/ssh_config isu1)  自動削除: 起動から ${TTL_MIN} 分後"

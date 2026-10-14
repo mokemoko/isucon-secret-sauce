@@ -1,0 +1,29 @@
+# ISUCON 用 MySQL 8.0 設定の雛形 (/etc/mysql/mysql.conf.d/ に置く想定)。勘所は knowledge/middleware.md
+# 耐久性を下げる設定を含む。ISUCON では「再起動後にデータが残る」ことだけが要件で、OS クラッシュ耐性は問われない
+[mysqld]
+# メモリの 50〜70% (DB 専用ホストなら多め)。データが全部載れば読み込みのディスク I/O が消える
+innodb_buffer_pool_size = 1G
+innodb_log_file_size = 256M            # 8.0.30 以降は innodb_redo_log_capacity
+innodb_flush_log_at_trx_commit = 2     # コミット毎の fsync をやめる (1秒毎)
+innodb_doublewrite = 0
+innodb_flush_method = O_DIRECT
+innodb_flush_neighbors = 0
+disable-log-bin                        # 8.0 は binlog が既定で有効。レプリケーションしないなら不要
+
+max_connections = 1024                 # アプリの接続プール (MaxOpenConns × 台数) より大きく
+max_allowed_packet = 256M              # 画像などの大きい INSERT 用
+
+# クエリ計測は performance_schema の digest 集計 (既定で有効) を使う。slow log は負荷が大きいので普段は切る
+performance_schema = ON
+# 深掘りで実 SQL を全件見たいときだけ有効にする (QUERY_DIGEST=pt、LOG_FILES に slow log を足す)
+# slow_query_log = 1
+# slow_query_log_file = /var/log/mysql/mysql-slow.log
+# long_query_time = 0
+
+# 必要に応じて
+# innodb_io_capacity = 2000
+# innodb_io_capacity_max = 4000
+# join_buffer_size = 256K
+# sort_buffer_size = 4M
+# innodb_adaptive_hash_index = 0      # 書き込みが多くロック競合するとき
+# skip-name-resolve

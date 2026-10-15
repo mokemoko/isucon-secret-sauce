@@ -6,7 +6,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 set -a; . "${ENV_FILE:-./env.sh}"; set +a   # アダプタ (bin/digest/*) にも MYSQL_CMD 等を渡す
-QUERY_DIGEST=${QUERY_DIGEST:-psdigest}
+QUERY_DIGEST=${QUERY_DIGEST:-pt}
 ref=${1:-origin/main}; note=${2:-}
 STATE=${STATE:-state}
 mkdir -p "$STATE"

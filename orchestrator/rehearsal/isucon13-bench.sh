@@ -1,5 +1,5 @@
 #!/bin/sh
-# リハーサル用: ポータルの負荷走行の代わり。bench 専用ホストで isu1 に向けて実行する (~/isu-bench.sh に置く)
+# リハーサル用: ポータルの負荷走行の代わり。bench 専用ホストで TARGET (既定 isu1) に向けて実行する (~/isu-bench.sh に置く。向き先の選択はポータルの操作に相当)
 # 標準出力は競技者向けのログとエラーメッセージ、最終行に {"pass","score"}。標準エラー (staff log) は捨てる
 cd /home/isucon
 rm -f /tmp/result.json

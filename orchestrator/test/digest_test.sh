@@ -52,6 +52,20 @@ J
 cat >"$t/st/docs/scoring.json" <<'J'
 {"endpoints":[{"method":"GET","uri":"/","weight":1},{"method":"*","uri":"^/image/","weight":0.5},{"method":"POST","uri":"^/[","weight":9}]}
 J
+printf '%s\n' 'level=INFO msg=start' 'level=WARN msg=mismatch CODE=33' 'level=ERROR msg=timeout' 'level=WARN msg=mismatch CODE=33' >"$t/st/analysis/b1/bench.txt"
+ENV_FILE="$t/env.sh" "$root/bin/digest.sh" "$t/st/analysis/b1"
+[ "$(wc -l <"$t/st/analysis/b1/warnings.txt" | tr -d ' ')" = 3 ] || { echo "FAIL warnings.txt"; exit 1; }
+grep -q '^warnings=3 ' "$t/st/analysis/b1/summary.md" || { echo "FAIL warnings in summary"; cat "$t/st/analysis/b1/summary.md"; exit 1; }
+echo 'BENCH_WARN_RE="CODE=33"' >"$t/env2.sh"
+ENV_FILE="$t/env2.sh" "$root/bin/digest.sh" "$t/st/analysis/b1"
+grep -q '^warnings=2 ' "$t/st/analysis/b1/summary.md" || { echo "FAIL BENCH_WARN_RE"; exit 1; }
+# 減点の件数: 最後に当たった行の最初の整数。BENCH_PENALTY_RE が無ければ penalty.txt を作らない
+printf '%s\n' 'Errors: 2 (critical 0)' 'level=WARN x' 'Errors: 5 (critical 1)' >>"$t/st/analysis/b1/bench.txt"
+printf '%s\n' 'BENCH_PENALTY_RE="Errors: [0-9]+"' >"$t/env3.sh"
+ENV_FILE="$t/env3.sh" "$root/bin/digest.sh" "$t/st/analysis/b1"
+[ "$(cat "$t/st/analysis/b1/penalty.txt")" = 5 ] && grep -q '^penalty=5 ' "$t/st/analysis/b1/summary.md" || { echo "FAIL penalty"; cat "$t/st/analysis/b1/summary.md"; exit 1; }
+ENV_FILE="$t/env2.sh" "$root/bin/digest.sh" "$t/st/analysis/b1"
+[ ! -f "$t/st/analysis/b1/penalty.txt" ] || { echo "FAIL penalty.txt without RE"; exit 1; }
 ENV_FILE="$t/env.sh" "$root/bin/digest.sh" "$t/st/analysis/b1"
 got=$(jq -c 'map(.weight)' "$t/st/analysis/b1/h1/endpoints.json")
 [ "$got" = '[1,null,0.5,null]' ] || { echo "FAIL weights: $got"; exit 1; }

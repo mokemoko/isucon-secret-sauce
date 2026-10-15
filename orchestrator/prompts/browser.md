@@ -16,6 +16,7 @@
   - 主要な画面：`app-map.md` の画面・ログインの種類ごと（`constraints.md` の動作確認の手順があればそれに従う）。画面ごとに `snapshot`（アクセシビリティツリー）と `screenshot`、`network requests`（呼んだ API と件数）、`console`・`errors` を保存する
   - 操作：作成・更新・削除のような書き込みを1通り行い、結果の画面も記録する
   - 記録の一覧と、たどり方（URL・操作の手順）を `$STATE/browser/initial/README.md` に書く。次回以降はこの手順で同じようにたどる
+- spec に `mode=record` があれば、初期状態の記録だけを行って完了する（比べない。Phase 3 の本番の確認の基準になる）。worker_done の要約は `record: <画面の数>`
 - **現在の main と比べる**：`origin/main` をローカルで起動し、同じ手順でたどって `$STATE/browser/<task_id>/` に記録し、初期状態と比べる
   - 違いの判定：文言・要素の有無・並び順・件数・画面遷移・HTTP ステータス・コンソールのエラー。時刻・ID・乱数のような揺れる値は除く
   - API の呼び出し回数が初期状態から変わったものも書く（意図した最適化かどうかは Coordinator が判断する）

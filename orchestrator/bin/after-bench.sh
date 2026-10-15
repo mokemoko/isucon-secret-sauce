@@ -7,12 +7,14 @@
 #      それぞれ1位を比べる (moved=yes なら summary.md を読み、insights を書き換え、Analyst の起動を考える)
 #   4. 再起動確認の要否: $STATE/restart-pending.tsv (task_id <TAB> マージコミット <TAB> 採用時刻 epoch) が3件以上か、最古が45分以上前
 #   5. マージ待ちの列: git fetch してから bin/queue.sh rank (main と競合するものは ! と「リベースを頼む」行に出る)
+#   6. 承認待ちの仮説: タイトルが [要承認] で始まる未着手のタスク (pending・ready) のうち、ゲートが無いもの (「ゲート未作成」) と、
+#      ゲートが解決済みなのに未着手のもの (「回答済み・未着手」)。ゲートはそのタスクに付けるか、質問文にその task_id を書く
 # どれかが失敗しても残りは続ける (失敗は ERR 行に出す)
 set -uo pipefail
 caller=$PWD
 cd "$(dirname "$0")/.."
 orc=$PWD
-STATE=${STATE:-state}
+STATE=${STATE:-state}; ORCA=${ORCA:-orca}
 id=${1:?usage: after-bench.sh <bench_id>}
 a=$STATE/analysis
 
@@ -76,3 +78,20 @@ else echo "pending=0 restart_check_due=no"; fi
 echo; echo "## マージ待ちの列"
 git -C "$caller" fetch -q origin 2>/dev/null || echo "ERR git fetch に失敗 (競合の確認は古い origin で行う)"
 (cd "$caller" && "$orc/bin/queue.sh" rank) || echo "ERR queue.sh rank が失敗"
+
+echo; echo "## 承認待ちの仮説"
+run=$(cat "$STATE/run_id" 2>/dev/null)
+if [ -z "$run" ]; then echo "run_id が無い"
+else
+  tasks=$("$ORCA" orchestration task-list --run "$run" --json 2>/dev/null | jq -c '[.result.tasks[]? | select((.task_title // "") | startswith("[要承認]")) | select(.status == "pending" or .status == "ready") | {id, title: .task_title}]') || tasks=
+  gates=$("$ORCA" orchestration gate-list --run "$run" --json 2>/dev/null | jq -c '[.result.gates[]? | {task_id, status, question: (.question // "")}]') || gates=
+  if [ -z "$tasks" ] || [ -z "$gates" ]; then echo "ERR task-list か gate-list に失敗"
+  else
+    jq -rn --argjson t "$tasks" --argjson g "$gates" '
+      [$t[] | . as $x | ([$g[] | select(.task_id == $x.id or (.question | contains($x.id)))]) as $mine
+        | if ($mine | length) == 0 then "ゲート未作成: \($x.id) \($x.title)  → needs_human のゲートを作る"
+          elif ($mine | all(.status != "pending")) then "回答済み・未着手: \($x.id) \($x.title)  → 回答を確かめて着手するか閉じる"
+          else empty end] | if length == 0 then "なし" else .[] end'
+  fi
+fi
+

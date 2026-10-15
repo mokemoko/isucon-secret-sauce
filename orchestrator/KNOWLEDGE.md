@@ -12,6 +12,7 @@ ISUCON 以外の題材に流用するときにも効く内容に限る。ISUCON 
 - **`check --wait` は Run ごとに1本だけ**。2本目は `already has an active actionable waiter` で失敗する。バックグラウンドに回すと待機を見失う。`pgrep` で探すと他のワーカーの待機を取り違える
 - **待機中のワーカーの入力欄に人間の書きかけがあると、send が取り込まれない**。送った側は worker-read で取り込みを確かめる
 - **worker_done を送ったワーカーの Dispatch は完了扱いになり、`send --to dispatch:<id>` は `dispatch_inactive` で届かない**（`--to @claude` の一斉送信も同じ）。release していなければ、同じターミナルに `worker-start --task <新しいタスク> --terminal <handle>` で次の仕事を渡せる（handle は `worker-show --dispatch <id>` で取る）
+- **ワーカーが Claude の API エラー（`API Error: The response stopped arriving`）でターンを終えると、worker_done は送られず、Orca 上は dispatched のまま**。`worker-list` の `projection.stage.activity` だけが `done` になり、Coordinator の `check` には何も届かない。`orca terminal send` で「続けて」と送れば再開する。`bin/stalled-workers.sh` がこれを拾う
 - **`worker-start --worktree new-top-level --name <name>` のブランチ名は `<git user>/<name>`** で、`--name` とは一致しない。マージするブランチはワーカー自身に切らせるか、worker_done の要約で受け取る
 - フォルダ信頼：元のリポジトリを信頼済みなら、worker-start の新しい worktree は確認で止まらない。**初回だけ人間が承認する**必要があり、auto モードではエージェントが代理承認できない（分類器が拒否する）
 

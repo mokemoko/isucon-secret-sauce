@@ -39,3 +39,6 @@
 - `net.core.somaxconn`・`net.ipv4.tcp_max_syn_backlog`：接続が殺到して取りこぼすとき
 - `net.ipv4.ip_local_port_range`・`net.ipv4.tcp_tw_reuse=1`：別ホストの DB へ短い接続を大量に張るとき（まず接続プールで再利用する）
 - サービスの起動順：アプリのユニットに `After=mysql.service` など。再起動試験で DB より先に起動して失敗しないように
+- 設定の一部だけを変える（原本をリポジトリに入れられない・入れたくないとき）：原本はそのままにして、上書きだけをリポジトリに入れて配置する
+  - systemd のユニット：`/etc/systemd/system/<unit>.d/10-override.conf` の drop-in。`[Service]` に `EnvironmentFile=-/path/to/override.env` を足すと、元の `EnvironmentFile=` の後に読まれ、同じ変数を上書きできる（DB の接続先だけをホストごとに変える、など）。置いたら `systemctl daemon-reload`
+  - nginx・MySQL：`conf.d/` に後から読まれる設定を置く（MySQL は後の値が勝つ。nginx は同じディレクティブの重複がエラーになるものがあるので、元の設定から外せないものは原本ごと管理する）

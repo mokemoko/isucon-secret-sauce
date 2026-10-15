@@ -73,6 +73,18 @@ echo '{"id":"b4","pass":true,"score":30}' >>"$t/bench.jsonl"; $q rank >/dev/null
 # ベンチが無いときも落ちない
 rm "$t/bench.jsonl"; $q rank >/dev/null
 [ "$(jq -r '.queue | length' "$t/queue-rank.json")" = 3 ] || { echo "FAIL no bench"; exit 1; }
+# 0点の間: [0点解消] が優先度・待ち時間に関係なく先頭、繰り上げ (*) なし
+cp "$t/merge-queue.json" "$t/zq.bak"; cp "$t/bench.jsonl" "$t/zb.bak" 2>/dev/null || :
+old=$(( $(date +%s) - 3600 ))
+printf '%s\n' "[{\"task_id\":\"old\",\"title\":\"小さい変更\",\"area\":\"a\",\"expected_gain\":\"high\",\"degree_hint\":0.9,\"ready_at\":$old},{\"task_id\":\"fix\",\"title\":\"[0点解消] デッドロック\",\"area\":\"b\",\"expected_gain\":\"low\",\"ready_at\":$(date +%s)}]" >"$t/merge-queue.json"
+echo '{"id":"z1","pass":true,"score":0}' >"$t/bench.jsonl"
+out=$($q rank)
+[ "$(jq -r '.queue[0].task_id + " " + (.queue[0].aged|tostring) + " " + (.queue[1].aged|tostring) + " " + (.zero|tostring)' "$t/queue-rank.json")" = "fix false false true" ] \
+  && echo "$out" | grep -q '0点の間' || { echo "FAIL zero: $(jq -c '.queue|map(.task_id)' "$t/queue-rank.json")"; exit 1; }
+# pass に戻れば繰り上げが効く
+echo '{"id":"z2","pass":true,"score":50}' >>"$t/bench.jsonl"; $q rank >/dev/null
+[ "$(jq -r '.queue[0].task_id' "$t/queue-rank.json")" = old ] || { echo "FAIL zero off"; exit 1; }
+cp "$t/zq.bak" "$t/merge-queue.json"; cp "$t/zb.bak" "$t/bench.jsonl" 2>/dev/null || rm -f "$t/bench.jsonl"
 # add・pop・requeue は queue.log に (時刻, 操作, 列の長さ) を残す。rank は残さない
 n=$(wc -l <"$t/queue.log" | tr -d ' '); $q pop nonexistent; $q rank >/dev/null
 [ "$(wc -l <"$t/queue.log" | tr -d ' ')" = $((n + 1)) ] && tail -n1 "$t/queue.log" | grep -qE '^[0-9]+	pop	3$' || { echo "FAIL queue.log"; tail -3 "$t/queue.log"; exit 1; }

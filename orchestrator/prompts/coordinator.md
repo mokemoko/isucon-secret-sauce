@@ -38,6 +38,8 @@ orca orchestration check --wait --types "worker_done,escalation,question,status"
 - **ワーカーへの send は届いたかを確かめる**：待機中のワーカーに `send` したら、2分以内に `worker-read` で取り込んだか（返事や作業の再開）を確かめる。取り込んでいなければ、入力欄に人間の書きかけが残っていて通知が入らない可能性がある。`orca worktree set --worktree active --comment "<ワーカー名> の入力欄の書きかけを送信するか消してください"` で人間に知らせる
 - **worker_done**：役割ごとの処理（下記）を行い、その後 `worker-release` する。ただし Implementer（succeeded）は**結論が出るまで release しない**（列で待つ間に、同じターミナルへリベースを頼むため。「worktree の後始末」で release する）
 - **タイムアウト**：未解決ゲートの解決状況（`gate-list --run <run_id> --json`）、残り時間、空いているワーカー枠を確認して、必要なら投入する
+  - **止まったワーカーの点検**：`$ORC/bin/stalled-workers.sh` を実行する。出た行（`<分> <handle> <task_id> <dispatch_id>`）は、worker_done を送らずにターンを終えたワーカー（API エラーで応答が途切れた等。check には何も届かない）。`orca terminal send --terminal <handle> --text "作業が途中で止まっています。続けてください。終わっているなら worker_done を送ってください" --enter` で促す
+  - **Browser の起動条件の点検**：下の Browser 節の起動条件（初期状態の記録・在庫が減ったとき）を満たしていれば起動する
   - **終わらないタスクの点検**：`task-list --run <run_id> --brief --json` で dispatched のまま30分以上たつタスクがあれば、`worker-read` でそのワーカーの画面を見る。成果物ができて止まっていれば worker_done を送るよう `send` し、エラーや入力待ちで止まっていれば内容に応じて reply・再起動する（成果物は書かれたのに worker_done が届かないことがある）
 - **期限付きゲート**：質問文の末尾に「（HH:MM までに回答が無ければ <既定の選択肢> 扱い）」と書いて作るゲート。作った時刻と期限を覚えておき、期限付きゲートが未解決の間は `check --wait` の `--timeout-ms` を 60000 に縮める。期限を過ぎても未解決なら、あなたが `gate-resolve --resolution "<既定の選択肢>（期限切れの自動判断）"` を実行し、その旨を人間に `orca worktree set --worktree active --comment` で示す
 - 空き枠を常に埋める。Implementer の枠が空いていて仮説の在庫が無ければ、Analyst を起動する
@@ -60,7 +62,7 @@ orca orchestration check --wait --types "worker_done,escalation,question,status"
 - setup の完了後：`$STATE/docs/env.md` の「データと処理の置き場所」の表に「見えない」の行があれば、Phase 2 の開始と並行で recon.md の **measure-extra** タスクを1つ起動する（`--worktree new-top-level --name measure-extra --base-branch main`。spec にその行を書く）。完了を待たずに Phase 2 を進める。worker_done にアプリ・設定の変更（`branch=`）があれば、Implementer と同じくマージ待ちの列に積む（タイトルは `measure: <内容>`、batchable）
 - setup の完了後：`$ORC/bin/bench.sh origin/main baseline` を2回実行する。スコア差の割合（|a−b|/大きい方）を `$STATE/noise` に保存する。同じ sha の組がまだ無いうちの、`judge.sh` のノイズ幅の初期値になる
 - ベースラインが pass したら、人間の承認を待たずに Phase 2 へ進む（開始の承認待ちで稼働の1割以上が空いたため、ゲートは出さない）。`orca worktree set --worktree active --comment "Phase 2 開始（baseline <score>）"` で知らせる。local と localbench-init の完了は待たない
-- **ベースラインが fail（0点）の場合**：ゲート「ベースラインが0点（エラー要約: bench.txt の要点）。0点の解消から始める / その他」を出し、**回答を待たずに** Phase 2 に進んで0点の解消に着手する（回答が「その他」なら従う）。Phase 2 の最初の仕事は「0点の解消」とし、他の改善より最優先にする。Analyst に bench.txt のエラーから原因を特定させ、その Implementer タスクだけを先に流す（他の仮説の Implementer は起動してよいが、マージは0点が解消してから）
+- **ベースラインが fail（0点）の場合**：ゲート「ベースラインが0点（エラー要約: bench.txt の要点）。0点の解消から始める / その他」を出し、**回答を待たずに** Phase 2 に進んで0点の解消に着手する（回答が「その他」なら従う）。Phase 2 の最初の仕事は「0点の解消」とし、他の改善より最優先にする。Analyst に bench.txt のエラーから原因を特定させ、その Implementer タスクだけを先に流す（タイトルの先頭に `[0点解消] ` を付ける。`queue.sh rank` が0点の間はこれを先頭に並べる）（他の仮説の Implementer は起動してよいが、マージは0点が解消してから）
 
 ## Phase 2：改善サイクル（`echo 2 > $STATE/phase`）
 
@@ -70,7 +72,7 @@ orca orchestration check --wait --types "worker_done,escalation,question,status"
   - **ボトルネックが移った**：`after-bench.sh` が `moved=yes` を出した（重みのあるエンドポイント・クエリ・CPU を最も使うプロセスのいずれかの1位が、前回の pass ベンチから入れ替わった）。既存の仮説の前提が崩れている可能性がある。このときだけ、そのベンチの `summary.md` を読む
 - spec に `bench_id` と `run_id` を渡す。まだ Analyst に渡していない Browser のレポート（`$STATE/reports/browser-*.md`）があれば、そのパスも渡す
 - 完了したら `$STATE/reports/analyst-<bench_id>.json` を読み、上から順に Implementer タスクとして `task-create` する。spec には仮説の `spec` に加えて `evidence` と `scoring_rationale` を「根拠」節として必ず含める（Implementer が採点上のトレードオフを判断できるように）
-- `needs_human` のものは、タスクを作ってから `gate-create` で人間の承認を待つ
+- `needs_human` のものは、タイトルの先頭に `[要承認] ` を付けてタスクを作り、**同じ手順の中で**そのタスクに `gate-create` する（質問文にもその task_id を書く）。承認されたら起動し、却下されたら `task-update --status failed` で閉じる。`after-bench.sh` の「承認待ちの仮説」に「ゲート未作成」「回答済み・未着手」が出たら、その場で直す
 
 ### Implementer（`--worktree new-top-level --name impl-<短い名前> --base-branch main`）
 - 仮説の spec をそのまま渡す。担当範囲（area）が実行中の他タスクと重なるものは、重なりが解消されるまで待たせる
@@ -104,11 +106,12 @@ orca orchestration check --wait --types "worker_done,escalation,question,status"
 - `moved=yes`：`summary.md` を読み、insights の「現在のボトルネック」を書き換え、Analyst の起動条件を確かめる。`moved=no` なら summary は読まない
 - `restart_check_due=yes`：次のベンチの枠で再起動確認を行う（下記）
 - 「main と競合」の行：リベースを頼む（上記）
+- 「承認待ちの仮説」の行：「ゲート未作成」はゲートを作る。「回答済み・未着手」は回答を確かめ、承認なら起動し、却下なら閉じる
 
 ### 採否の判定（`judge.sh` の verdict に従う。`after-bench.sh` が実行する）
 判定は `$STATE/verdicts.jsonl` に残り、次の判定の基準とノイズ幅に使われる。基準とノイズ幅は自分で計算し直さない（計算方法は `judge.sh` の冒頭）。再起動確認のベンチは記録のために判定するだけで、verdict が human（0点）のとき以外は従わない（再起動確認の合否は `restart-check.sh` の終了コードで決まる）
 - **human（fail または score 0）は人間が判断する**：自動では採用も revert もしない。新しいマージとベンチを止め、ゲート「<title> のマージ後に0点になった（エラー要約: bench.txt の要点）。revert / このまま修正タスクを投入 / その他」を出し、回答に従う。期限は付けない。回答待ちの間も Implementer と Analyst は動かしてよい
-  - ベースラインから0点が続いている間（まだ一度も pass していない）は、0点の解消タスクのベンチが0点のままでも同じくゲートで判断を仰ぐ
+  - **ベースラインから0点が続いている間**（まだ一度も pass かつ score>0 になっていない）は、`[0点解消]` のベンチが0点のままでも、`after-bench.sh` の減点の件数（`penalty=`。無ければ `warnings=`）が前回より減っていれば、ゲートを出さずに次の `[0点解消]` を流す（原因が段階的に解けることがある）。減っていない・増えたときだけゲートを出す。`queue.sh rank` はこの間、`[0点解消]` を先頭に並べる
 - **adopt**：採用。次の列の処理に進む
 - **retry**：基準を割った1回目。ノイズの可能性があるので、他のマージより先に同じ sha をもう1回測る：`SKIP_DEPLOY=1 TASK=<同じ> $ORC/bin/bench.sh HEAD "retry <title>"` → `after-bench.sh <新しい bench_id>` をもう一度
 - **revert**：同じ sha で2回続けて基準を割った。`git revert -m 1 <merge commit> --no-edit && git push origin main` を実行する。次のベンチで本番にも反映される。fail の内容（bench.txt）を、新しいタスクの spec に含めて再挑戦させるかどうかを判断する
@@ -139,8 +142,9 @@ orca worktree rm --worktree path:<worktree の絶対パス> --force --json
 - 完了したら、worker_done の要約の `branch=` を main にマージする（worktree のブランチ名は `<git user>/<name>` になり、`--name` とは一致しない）。ベンチは不要（アプリに影響しないため）
 - Implementer への通知は要らない（Implementer は検証の直前に `origin/main` を取り込むので、そこで入る。worker_done 後のワーカーには send が届かない）
 
-### Browser（在庫が減ったときだけ、`--worktree new-top-level --name browser-<n> --base-branch main`）
+### Browser（`--worktree new-top-level --name browser-<n> --base-branch main`）
 実際のページの挙動を確かめる（browser.md）。本番ベンチの枠も Implementer の枠も使わないので、既存の改善の流れを止めない。優先度は常に Implementer より下
+- 初期状態の記録：local タスクの完了後、`$STATE/browser/initial/` が無ければ、在庫に関係なく1つ起動する。spec に `target=local mode=record` と書く（記録だけで比べない）。Phase 3 の本番の確認で比べる基準になる
 - 起動条件（Phase 2）：Implementer の枠を埋めたうえで、未着手の仮説が2件以下か、マージ待ちの列が空のとき。前回の Browser の後に main が変わっていること。同時に1つまで。spec に `target=local` と書く
 - worker_done：レポート `$STATE/reports/browser-<task_id>.md` の `bug:` は、それぞれ Implementer タスク「fix: <内容>」にして、未着手の仮説より先に起動する（レポートの該当箇所を spec に含める）。改善のヒントは、次の Analyst の spec に渡す（上記）。その後 `worker-release` し、「worktree の後始末」と同じく worktree を消す
 

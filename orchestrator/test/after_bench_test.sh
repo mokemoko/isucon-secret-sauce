@@ -35,4 +35,17 @@ rm -f "$t/analysis/b1/penalty.txt" "$t/analysis/b2/penalty.txt"
 # 前回の pass ベンチが無い・解析結果が無いときも最後まで出す
 out=$(cd "$t" && "$root/bin/after-bench.sh" b1)
 echo "$out" | grep -qF 'moved=不明' && echo "$out" | grep -qF '## マージ待ちの列' || { echo "FAIL first bench:"; echo "$out"; exit 1; }
+# 承認待ちの仮説: ゲートの無い [要承認]・回答済みで未着手のものを出す。ゲート待ちと着手済みは出さない
+echo run_x >"$t/run_id"
+cat >"$t/orca" <<'S'
+#!/bin/sh
+case "$*" in
+  *task-list*) echo '{"result":{"tasks":[{"id":"task_n","task_title":"[要承認] アプリを複数台に","status":"pending"},{"id":"task_p","task_title":"[要承認] DB を分離","status":"ready"},{"id":"task_r","task_title":"[要承認] 縦分割","status":"pending"},{"id":"task_d","task_title":"[要承認] 着手済み","status":"dispatched"},{"id":"task_o","task_title":"普通の仮説","status":"pending"}]}}' ;;
+  *gate-list*) echo '{"result":{"gates":[{"task_id":"task_h","status":"pending","question":"DB を分離してよいか (task_p)"},{"task_id":"task_r","status":"resolved","question":"縦分割"}]}}' ;;
+esac
+S
+chmod +x "$t/orca"
+out=$(cd "$t" && ORCA=$t/orca "$root/bin/after-bench.sh" b2 | sed -n '/## 承認待ちの仮説/,$p')
+echo "$out" | grep -q '^ゲート未作成: task_n ' && echo "$out" | grep -q '^回答済み・未着手: task_r ' \
+  && ! echo "$out" | grep -qE 'task_p|task_d|task_o' || { echo "FAIL approval:"; echo "$out"; exit 1; }
 echo ok

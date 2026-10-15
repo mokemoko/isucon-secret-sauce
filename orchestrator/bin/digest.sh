@@ -74,9 +74,9 @@ for f in "$dir"/*/cpu.pprof; do [ -s "$f" ] && run profile "$PROFILE_DIGEST" "$f
   done
   for f in "$dir"/*/profile.json; do
     [ -f "$f" ] || continue
-    echo; jq -r '"## cpu profile \(input_filename | split("/")[-2]) samples=\(.samples)s / \(.duration)s",
+    echo; jq -r --arg app "${PPROF_APP_RE:-^main\\.}" '"## cpu profile \(input_filename | split("/")[-2]) samples=\(.samples)s / \(.duration)s",
       "flat% cum% func (flat 上位)", (.flat[0:12][] | "\(.flat_pct)% \(.cum_pct)% \(.func)"),
-      "flat% cum% func (cum 上位のうちアプリの main パッケージ)", (.cum | map(select(.func | startswith("main."))) | .[0:10][] | "\(.flat_pct)% \(.cum_pct)% \(.func)")' "$f"
+      "flat% cum% func (cum 上位のうちアプリのパッケージ。env.sh の PPROF_APP_RE、既定 ^main\\.)", (.cum | map(select(.func | test($app))) | .[0:10][] | "\(.flat_pct)% \(.cum_pct)% \(.func)")' "$f"
   done
   for f in "$dir"/*/resources.json; do
     [ -f "$f" ] || continue

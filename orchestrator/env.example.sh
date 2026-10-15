@@ -6,6 +6,7 @@ REPO_DIR=/home/isucon/webapp         # 各サーバ上の git repo (remote 名 o
 LOG_FILES="/var/log/nginx/access.log"  # ベンチ前に truncate、後に回収。QUERY_DIGEST=pt のときは slow log も足す
 BENCH_CMD="echo TODO"                # ベンチ実行コマンド。標準出力の最終行に {"pass":bool,"score":int,...} を出すこと
 PPROF_URL=""                         # 例 "http://localhost:6060/debug/pprof/profile?seconds=60" (PPROF_HOSTS の各台の上で curl)
+PPROF_APP_RE=""                      # summary.md の cum 上位に出すアプリの関数 (jq の正規表現)。空なら ^main\. 。main 以外のパッケージにアプリがあるときに書く
 PROBE_URLS=""                        # 必須。再起動確認で前後比較する GET URL (APP_HOST 上で curl)。空だと restart-check.sh が動かない
 PROBE_CURL_ARGS=""                   # 任意。PROBE の curl に足す引数 (APP_HOST のシェルで展開。cookie はサーバ側のコマンド置換で取る)
 ALP_ARGS="json --config <競技リポジトリの絶対パス>/config/alp.yml"  # 回収した access.log に対する alp 引数 (雛形は templates/alp.yml)

@@ -9,16 +9,27 @@ orchestrator の実装（`orchestrator/bin/digest/` のアダプタ）との対�
 
 | 計測 | 負荷 | 備考 |
 |---|---|---|
-| MySQL slow log（`long_query_time=0`） | **大**。全クエリをファイルに書き、書き込みはロックで直列化される | private-isu のリハーサルで1分のベンチ = 66MB |
+| MySQL slow log（`long_query_time=0`） | **大**。全クエリをファイルに書き、書き込みはロックで直列化される | 過去の実測で1分のベンチ = 66MB |
 | pprof（ベンチ中 60 秒の CPU プロファイル） | 小〜中（数%程度とされる） | 100Hz の SIGPROF でスタックを取る |
 | nginx アクセスログ | 小 | `access_log <path> <format> buffer=64k flush=1s;` で write を減らす |
-| /proc サンプラー（`orchestrator/bin/sample-resources.sh`） | ごく小 | 実測：300 プロセスの環境で 30 秒に CPU 0.53 秒（1コアの約1.8%）、送信 約5.5KB/s |
+| /proc サンプラー（`orchestrator/bin/sample-resources.sh`） | ごく小 | 過去の実測：300 プロセスの環境で 30 秒に CPU 0.53 秒（1コアの約1.8%）、送信 約5.5KB/s |
 | performance_schema digest 集計 | ほぼ無し | MySQL 8.0 は既定で有効なので、負荷はすでに払っている |
 | ログ回収・alp / pt / pprof の解析 | 無し | ベンチ後に手元で実行 |
 
 ## クエリの計測
 
-### MySQL 8.0：performance_schema の digest 集計（既定）
+### MySQL：slow log + pt-query-digest（既定）
+- アダプタ：`QUERY_DIGEST=pt`。slow log（`long_query_time=0`）を有効にし、パスを `LOG_FILES` に足す
+- 既定にする理由：アプリの多くはサーバ側のプリペアドステートメントでクエリを実行し、それは digest 集計に出ない（下の psdigest の制約）。slow log は COM_STMT_EXECUTE も実 SQL で記録する
+- 使う場面：常用。加えて、遅い実 SQL をパラメータ付きで全件見て EXPLAIN したい、ベンチ中のどの時点で遅くなったかを追いたいとき
+- 負荷：全クエリを書くので大きい（上の表）。digest に切り替えるのは、(1) slow log の書き込みが目立つ（`resources.json` で mysqld の iowait・CPU が高い、1回の slow log が数百 MB）とき、(2) アプリがテキストプロトコルで実行するようになった（Go なら DSN に `interpolateParams=true` を入れた後など）とき。切り替えたら主要な SELECT が digest に出ることを確かめる
+- pt の注意
+  - テキスト出力はバイナリを含む INSERT の例をそのまま載せて巨大になる（過去の実測で 1.2MB）。`--output json` を使う
+  - バイナリを含むクエリは値を `?` に置換できず fingerprint にバイナリが残ることがある。制御文字を除いて切り詰める
+  - 30 秒ごとの進捗表示が stderr に出る。`--progress time,86400` で止める
+  - 初期化（`/initialize`）の大量の INSERT・LOAD DATA も記録される。初期化の時間を短くしたいときは、初期化中だけ slow log を止める（`SET GLOBAL slow_query_log=0` → 戻す）
+
+### MySQL 8.0：performance_schema の digest 集計（軽い代替）
 - アダプタ：`QUERY_DIGEST=psdigest`（`query-psdigest.collect.sh` がベンチ前に `TRUNCATE`、ベンチ後に上位 30 種を取得）
 - 確認：`SELECT ENABLED FROM performance_schema.setup_consumers WHERE NAME='statements_digest';` が YES
 - 取れる：回数、合計・平均・最大・p95（`QUANTILE_95`）、ロック時間、走査行数、返却行数、インデックス未使用の回数（`SUM_NO_INDEX_USED` + `SUM_NO_GOOD_INDEX_USED`）、ディスク一時テーブル、最も遅かった実 SQL 1件（`QUERY_SAMPLE_TEXT`）
@@ -27,14 +38,8 @@ orchestrator の実装（`orchestrator/bin/digest/` のアダプタ）との対�
   - 累積値のみで時系列は無い。サンプルは `performance_schema_max_digest_sample_age`（既定60秒）より古いと次の実行で置き換わる
   - `TRUNCATE` には DROP 権限が要る。サーバ上の `sudo mysql`（root の auth_socket）で行う
   - mysql クライアント自身の `SELECT @@version_comment` などが混ざるので取得時に除く
-
-### MySQL：slow log + pt-query-digest（深掘り用）
-- アダプタ：`QUERY_DIGEST=pt`。slow log のパスを `LOG_FILES` に足す
-- 使う場面：遅い実 SQL をパラメータ付きで全件見て EXPLAIN したい、ベンチ中のどの時点で遅くなったかを追いたい
-- pt の注意
-  - テキスト出力はバイナリを含む INSERT の例をそのまま載せて巨大になる（リハーサルで 1.2MB）。`--output json` を使う
-  - バイナリを含むクエリは値を `?` に置換できず fingerprint にバイナリが残ることがある。制御文字を除いて切り詰める
-  - 30 秒ごとの進捗表示が stderr に出る。`--progress time,86400` で止める
+  - **サーバ側のプリペアドステートメントで実行されたクエリは出ない**（確認済み：MySQL 8.0.34・8.4.11、go-sql-driver/mysql）。Go の database/sql で DSN に `interpolateParams=true` が無いと、引数つきのクエリは Prepare → Execute → Close のバイナリプロトコルで実行され、`events_statements_summary_by_digest` には1件も載らない（`events_statements_summary_global_by_event_name` の `statement/com/Execute` の回数にだけ出る）。`db.Prepare` で明示的に準備した文も同じ。Close で破棄されるので `prepared_statements_instances` にも残らない。過去の実測でも、その状態では上位30件のうち SELECT が4件だけで、`interpolateParams=true` を入れた後は18件に増えた
+  - → digest に切り替えたら、アプリの主要な SELECT が出ているかを確かめる。`interpolateParams=true` は往復が減るので、それ自体が改善の打ち手にもなる
 
 ### MariaDB
 - performance_schema は**既定で無効**（有効化に再起動が要る）。digest 表に `QUANTILE_95`・`QUERY_SAMPLE_TEXT` が無い
@@ -53,6 +58,13 @@ orchestrator の実装（`orchestrator/bin/digest/` のアダプタ）との対�
 - 推奨：普段は `pg_stat_statements`、実 SQL や時系列が要るときだけログ型を1回有効にする
 - アダプタを足すなら `query-pgss.collect.sh`（pre でリセット、post で `sudo -u postgres psql -At -F $'\t' -c "SELECT query, calls, total_exec_time, mean_exec_time, max_exec_time, stddev_exec_time, rows, shared_blks_hit, shared_blks_read FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 30"`）と `query-pgss.sh`（時間はミリ秒。`p95` は無いので `max` か `mean + 2*stddev` を入れて、その旨を summary に書く。`rows_examined_avg` は空）
 - PG 13 未満は列名が `total_time` / `mean_time` など（`_exec_` が無い）
+
+### アプリに組み込まれた DB（SQLite など）
+DB サーバのプロセスが無く、クエリはアプリのプロセス内で実行される。MySQL のクエリ集計にも slow log にも出ず、pprof では cgo の呼び出し（Go なら `runtime.cgocall`）や DB ドライバの関数にまとまって見えるだけになる
+- まず、アプリ・ドライバにクエリログやトレースの仕組みが用意されていないかを探す（環境変数・設定・コード中のフック）。ある場合は、出力形式に合わせてアダプタ（`query-<tool>.sh`：1行1クエリの記録を fingerprint ごとに回数・合計・平均・p95 にまとめる）を足す。全件を書くので負荷は大きい。深掘りの数回だけ有効にし、通常は止める
+- 用意されていなければ、ドライバを包むフック（Go なら `database/sql` のドライバを包んで実行時間を記録する）をアプリに入れる。これもアプリの性能を変えるので、env.sh の変数で切り替えられるようにする
+- 軽い代替：pprof の cum で、どのハンドラから DB ドライバが呼ばれているかを見る。クエリの単位では分からないが、重いハンドラは分かる
+- DB のファイルが複数に分かれている場合は、ファイルのサイズ・行数の偏りも見る（一部のファイルだけ巨大なことがある）
 
 ## アクセスログ
 - nginx：JSON 形式で `request_time` を含める。alp は `alp json`

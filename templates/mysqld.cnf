@@ -13,12 +13,13 @@ disable-log-bin                        # 8.0 は binlog が既定で有効。レ
 max_connections = 1024                 # アプリの接続プール (MaxOpenConns × 台数) より大きく
 max_allowed_packet = 256M              # 画像などの大きい INSERT 用
 
-# クエリ計測は performance_schema の digest 集計 (既定で有効) を使う。slow log は負荷が大きいので普段は切る
+# クエリ計測は slow log + pt を既定にする (QUERY_DIGEST=pt、LOG_FILES に slow log を足す)。
+# サーバ側のプリペアドステートメントのクエリは performance_schema の digest 集計に出ないため。最終盤 (計測の無効化) で切る
+slow_query_log = 1
+slow_query_log_file = /var/log/mysql/mysql-slow.log
+long_query_time = 0
+# slow log の書き込みが重いときの軽い代替 (QUERY_DIGEST=psdigest)。アプリがテキストプロトコルで実行するときだけ使える
 performance_schema = ON
-# 深掘りで実 SQL を全件見たいときだけ有効にする (QUERY_DIGEST=pt、LOG_FILES に slow log を足す)
-# slow_query_log = 1
-# slow_query_log_file = /var/log/mysql/mysql-slow.log
-# long_query_time = 0
 
 # 必要に応じて
 # innodb_io_capacity = 2000

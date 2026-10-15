@@ -10,7 +10,10 @@
 |---|---|---|---|---|---|---|
 | 1 | 2026-10-11 | private-isu（catatsuy_private_isu_amd64_20260524） | t3a.medium ×1、アプリ＋ベンチ同居 | 0 → 70,012（約1時間30分、ベンチ21回）。最初の7回は 0 点 | Phase 1〜改善サイクルの通し、bench lane の直列化、ダッシュボード、人間の示唆・ゲート | 課題 1〜13（対応済み） |
 | 2 | 2026-10-12〜13 | ISUCON14（公式 AMI isucon14-20260818100152） | t3a.medium ×1（20GB）、アプリ＋ベンチ同居 | 初期 534〜717 → ベスト 15,290（再起動確認時）、最終 main 77170bd で 11,041。ベンチ32回、マージ19件（うち1件 revert）。稼働は約1時間35分（途中で EC2 を停止して約4時間中断） | digest 集計（32回すべてで summary.md。欠けたのは ssh 切断の1回だけ）、ssh 越しのリソース取得、`insights.md` の運用、マージ待ちの列、決済 API のある問題での Phase 1、EC2 停止を挟んだ中断・再開、Analyst による DB 集計での律速特定、ブラックボックスの遵守（ベンチの代わりにアクセスログから k6 シナリオを作った）。`scoring.json` はライドの結果で採点される問題のため、エンドポイントの重みが空 | 課題 14〜29（対応済み） |
-| 3 | 2026-10-14 | ISUCON13（matsuu/aws-isucon の AMI isucon13-20231128102223） | c6a.large ×2（isu1・isu2）＋ベンチ専用 c6a.large ×1 | 初期 4,188〜4,707 → 最終 151,219（main a3aa905、再起動確認）。ベンチ21回、採用20件（revert 0、0点1回）。稼働は約1時間10分（14:22〜15:19、16:10〜16:25。間は人間が停止） | 複数台（2台の並列 deploy、DB の別ホスト化を Analyst が初回から提案し採用）、ベンチ専用ホスト、サーバ側で git 化して push（auto モードで止まらない）、まとめて適用（3回・7件）、再起動確認をまとめて行うこと（途中は0回）、`local/.env` | `../ISSUE.md` の 1〜11（評価は下の「#3 の評価」） |
+| 3 | 2026-10-14 | ISUCON13（matsuu/aws-isucon の AMI isucon13-20231128102223） | c6a.large ×2（isu1・isu2）＋ベンチ専用 c6a.large ×1 | 初期 4,188〜4,707 → 最終 151,219（main a3aa905、再起動確認）。ベンチ21回、採用20件（revert 0、0点1回）。稼働は約1時間10分（14:22〜15:19、16:10〜16:25。間は人間が停止） | 複数台（2台の並列 deploy、DB の別ホスト化を Analyst が初回から提案し採用）、ベンチ専用ホスト、サーバ側で git 化して push（auto モードで止まらない）、まとめて適用（3回・7件）、再起動確認をまとめて行うこと（途中は0回）、`local/.env` | 課題 1〜11（対応済み。評価は下の「#3 の評価」） |
+| 4 | 2026-10-14 | ISUCON14（公式 AMI isucon14-20260818100152） | c5.large ×3（isu1〜isu3、本番相当）＋ベンチ専用 c6a.large ×1。既定 VPC の無いアカウントのため既存 VPC の public サブネット | 初期 699〜912 → 最終 79,685（計測の無効化後。final の再起動確認は 75,509）。ベンチ30回、採用23件（revert 1、0点0回）。END 21:30（3時間）のところ 20:09 に終了 | 3台構成、ベンチ専用ホストから向き先を選ぶ負荷走行（決済サーバを bench 側に立てる）、Phase 2 開始のゲート廃止、setup の受け入れ条件（psdigest で SELECT が出ず slow log に切り替え → interpolateParams 後に psdigest へ戻す）、DB の別ホスト化を初回から提案・採用、`state/end` による END の変更 | `../ISSUE.md` の 1〜7（評価は下の「#4 の評価」） |
+| 5 | 2026-10-15 | ISUCON12予選（matsuu/aws-isucon の AMI isucon12-qualify-20230829151948） | c5.large ×3（isu1〜isu3、本番と同じ）＋ベンチ専用 c6a.large ×1 | 初期 2,304 → ベスト 191,960、final の再起動確認 187,005（main 40de1d7）。ベンチ26回、採用17件（まとめて適用1回・2件を含む。revert 1）、0点2回（環境要因1・nginx の接続数上限1）。END 16:00（3時間）のところ 15:34 に終了 | Phase 3 を前倒ししない（15:15 に開始）、`after-bench.sh`、3台の活用（MySQL を isu2、アプリを isu1・isu3 にテナントで振り分け）を Analyst が提案し採用、SQLite（テナント DB）とアプリ内 DB の混在、ssh 不達時のゲート | `../ISSUE.md` の 8〜12（評価は下の「#5 の評価」） |
+| 6 | 2026-10-15 | ISUCON12本選（matsuu/aws-isucon の AMI isucon12-final-20230713234601） | c5.large ×5（isu1〜isu5）＋ベンチ専用 c6a.large ×1 | 初期 0（pass だが加点と減点が釣り合う）→ final の再起動確認 182,960（main 2184823）。ベンチ26回（変更の測定20、ベースライン等4、再起動確認2）、revert 0。稼働は約2時間55分（17:22〜18:56、22:09〜23:28。間は人間が止めた） | 0点のベースラインからの立ち上げ、manual が本文のリンク先のアプリのマニュアルを自分で取得、置き場所の表（見えない行なし）、Browser の本番での最終チェック、DB の2台化（isu2・isu5 への縦分割）、ダッシュボードの判断待ちの自由回答の不具合 | `../ISSUE.md` の 13〜18（評価は下の「#6 の評価」） |
 
 ## 本番との構成差分
 
@@ -18,8 +21,8 @@
 
 | 項目 | 本番の想定 | #1 private-isu | #2 ISUCON14 | 差分の影響・本番で注意すること |
 |---|---|---|---|---|
-| 台数 | 3台 | 1台 | 1台（本番は3台） | 複数台の deploy・`DB_HOSTS`・`PPROF_HOSTS`・台ごとのリソース取得は未検証 |
-| スペック | c5.large 程度 | t3a.medium（バースト型） | t3a.medium（本番は c5.large） | スコアの絶対値は比べられない。CPU クレジットの枯渇でスコアがぶれうる |
+| 台数 | 3台 | 1台 | 1台（本番は3台） | #3 で2台、#4 で3台（本番と同じ）の deploy・`DB_HOSTS`・台ごとのリソース取得を確認 |
+| スペック | c5.large 程度 | t3a.medium（バースト型） | t3a.medium（本番は c5.large） | #4 で本番相当の c5.large を使った。それ以前のスコアの絶対値は比べられない |
 | ベンチの実行 | ポータル（外部から負荷） | 競技サーバ上で同居実行（`BENCH_CMD` を ssh で） | 競技サーバ上で同居実行（`~/isu-bench.sh` を ssh で） | ベンチが CPU を取り合う。本番の `BENCH_CMD` はポータルの API かジョブ投入になる（Phase 1 で manual から決める） |
 | ベンチ結果の取得 | ポータルの表示・API | 標準出力の JSON | ラッパーが標準出力の「結果 pass= スコア=」を JSON にする。標準エラー（内部のデバッグログ）は捨てる | `BENCH_CMD` の出力を `{"pass","score"}` に変換するラッパーが要る |
 | マニュアル | ポータル・当日配布 | リポジトリの README・manual | 公式リポジトリの `docs/manual.md`＋`ISURIDE.md`。先頭にリハーサルの注記 | recon が読む場所が変わる |
@@ -29,20 +32,22 @@
 | ローカル検証 | Docker（問題のリポジトリ次第） | Docker（private-isu の compose） | Docker（エージェントが作る） | ローカルの予測は本番の改善率に使えない（#2 の評価） |
 
 ## 準備の手順（RUNBOOK の「開始直後」をリハーサル用に置き換えたもの）
-1. `rehearsal/up.sh` で起動する（問題ごとの `AMI`・`VOL_GB`・`BLACKBOX_DIR` は下の表）
+1. `rehearsal/up.sh` で起動する（問題ごとの `AMI`・`VOL_GB`・`BLACKBOX_DIR` は下の表）。既定 VPC が無いアカウントでは、インターネットゲートウェイへの経路がある public サブネットを `SUBNET=subnet-...` で指定する。手元の接続元 IP が NAT で複数に変わる環境では、観測した IP を SG に足す（ssh が突然届かなくなる）
 2. 前回の `orchestrator/state/`・`env.sh`・競技リポジトリの clone を `~/isucon/archive/<問題>/` に退避する
 3. マニュアルを `state/docs/manual-raw.md` に保存し、先頭にリハーサルの注記（台数・ベンチの実行方法・参照禁止のもの）を書く
 4. `~/isucon/ssh_config` に up.sh の `ssh_config` を写し、`~/.ssh/config` の先頭に Include を足す（終わったら外す）。`state/docs/hosts.txt` を書く
 5. `env.sh` を `env.example.sh` から作り、`HOSTS`・`BENCH_CMD`・`BLACKBOX_PATHS` だけ埋める（Coordinator が開始時に `BLACKBOX_PATHS` を読むため。残りは setup が埋める）
-6. 競技リポジトリを空の main にする（リハーサルは `mokemoko/isucon-test` を使い回す。前回の deploy key は消す）。`bin/deploy-key.sh mokemoko/isucon-test` を実行する。以降は RUNBOOK の手順 5 から
+6. 競技リポジトリを空の main にする（リハーサルは `mokemoko/isucon-test` を使い回す。前回の deploy key は消す）。前回分は先に `git clone --mirror` で `~/isucon/archive/<問題>/` に退避する。main の強制 push とブランチの削除は auto モードで止まるので人間が行う。`bin/deploy-key.sh mokemoko/isucon-test` を実行する。以降は RUNBOOK の手順 5 から
 7. 他の過去問は matsuu/aws-isucon の公開 AMI（ISUCON5予選〜14）で起動できる。ベンチの実行方法は各ディレクトリの README
-8. 途中で中断するときは `rehearsal/pause.sh stop`、再開は `rehearsal/pause.sh start`（IP の付け替えと、マージ待ちの待ち時間の補正をする）
+8. 途中で中断するときは `rehearsal/pause.sh stop`、再開は `rehearsal/pause.sh start`（IP の付け替え、マージ待ちの待ち時間の補正、`state/end` を中断した分だけ延ばす）。Coordinator には END を口頭で延ばさせない（見込みの延長幅と実際の中断がずれる）
 
 | 問題 | 起動 | ベンチ |
 |---|---|---|
 | private-isu | `rehearsal/up.sh`（既定値） | `ssh isu1 /home/isucon/private_isu/benchmarker/bin/benchmarker -u .../userdata -t http://localhost` |
-| ISUCON14 | `AMI=ami-0fcf9e8e8675a9ee4 VOL_GB=20 BLACKBOX_DIR= rehearsal/up.sh` | `sudo systemctl disable --now isuride-payment_mock` の後、`rehearsal/isucon14-bench.sh` を `~/isu-bench.sh` に置く（`./bench run --target https://xiv.isucon.net --addr 127.0.0.1:443` の標準出力から JSON を作る） |
-| ISUCON13 | `AMI=ami-006d211cb716fe8a0 APP_COUNT=2 TYPE=c6a.large BENCH_TYPE=c6a.large BLACKBOX_DIR= rehearsal/up.sh`（AMI は [matsuu/aws-isucon](https://github.com/matsuu/aws-isucon)） | isu1・isu2 の `~/env.sh` の `ISUCON13_POWERDNS_SUBDOMAIN_ADDRESS` を各自のプライベート IP にして `sudo ~/webapp/pdns/init_zone.sh`・`systemctl restart isupipe-go`。bench ホストはアプリ一式を `disable --now` し、`/etc/hosts` に isu1・isu2 を書き、`rehearsal/isucon13-bench.sh` を `~/isu-bench.sh` に置く。`BENCH_CMD="ssh bench /home/isucon/isu-bench.sh"` |
+| ISUCON14 | `AMI=ami-0fcf9e8e8675a9ee4 VOL_GB=20 APP_COUNT=3 TYPE=c5.large BENCH_TYPE=c6a.large BLACKBOX_DIR= rehearsal/up.sh`（本番相当の c5.large ×3 ＋ベンチ専用ホスト） | isu1〜isu3 は `sudo systemctl disable --now isuride-payment_mock`。bench ホストはアプリ一式（`isuride-go isuride-matcher isuride-payment_mock nginx mysql`）を `disable --now` し、`/etc/hosts` に isu1〜isu3 のプライベート IP を書き、`rehearsal/isucon14-bench.sh` を `~/isu-bench.sh` に置く（決済サーバは bench 上に立ち、`--payment-url` で bench のプライベート IP を渡す）。`BENCH_CMD="ssh bench /home/isucon/isu-bench.sh"`、`BLACKBOX_PATHS="/home/isucon/bench"`。向き先は ISUCON13 と同じく `TARGET=isu2` などで変えられる |
+| ISUCON12本選 | `AMI=ami-0ecfc02bf3af2d03e VOL_GB=20 APP_COUNT=5 TYPE=c5.large BENCH_TYPE=c6a.large BLACKBOX_DIR= rehearsal/up.sh`（本番は5台。インスタンスタイプはマニュアルに記載が無いので c5.large） | AMI の `~/isucon12-final`（問題リポジトリ一式。ベンチマーカーのソース・ポータル・docs）を読まずに全台から消し、isu1〜isu5 の `~/bin/benchmarker` も消す。bench ホストは `isuconquest.go nginx mysql` を `disable --now` し、`/etc/hosts` に isu1〜isu5 を書き、`rehearsal/isucon12f-bench.sh` を `~/isu-bench.sh` に置く。`BENCH_CMD="ssh bench /home/isucon/isu-bench.sh"`、`BLACKBOX_PATHS="/home/isucon/bin /home/isucon/dump"`。起動直後の初回は `/initialize` が60秒を超えて fail することがある（EBS の初回読み込み）。2回目以降は pass するが初期スコアはほぼ0。AMI の README にあるガチャの 404 は再現せず、パッチは不要だった。マニュアルは [gist](https://gist.github.com/shirai-suguru/770d30d16688a07ba78e0a188cd99f9f)（アプリのマニュアルは本文のリンク先） |
+| ISUCON12予選 | `AMI=ami-073140ad092048333 VOL_GB=20 APP_COUNT=3 TYPE=c5.large BENCH_TYPE=c6a.large BLACKBOX_DIR= rehearsal/up.sh`（本番と同じ c5.large ×3 ＋ベンチ専用ホスト） | AMI の `~/bench` にベンチマーカーのソースがあるので読まずに消す：isu1〜isu3 は `~/bench` ごと、bench は `bench`・`*.json`・`isuports.pem` 以外。isu1〜isu3 の `/etc/hosts` の `isuports-1〜3.t.isucon.dev`（初期値 127.0.0.11〜13）を各台のプライベート IP にする。bench ホストは `isuports blackauth nginx mysql` を `disable --now` し、`/etc/hosts` に isu1〜isu3 を書き、`rehearsal/isucon12q-bench.sh` を `~/isu-bench.sh` に置く。`BENCH_CMD="ssh bench /home/isucon/isu-bench.sh"`、`BLACKBOX_PATHS="/home/isucon/bench"`。マニュアルは [gist](https://gist.github.com/mackee/4320c18919c8f6f1867849378a17e651)（ポータル・CloudFormation・env-checker の記述は当てはまらないと注記する） |
+| ISUCON13 | `AMI=ami-006d211cb716fe8a0 APP_COUNT=2 TYPE=c6a.large BENCH_TYPE=c6a.large BLACKBOX_DIR= rehearsal/up.sh`（AMI は [matsuu/aws-isucon](https://github.com/matsuu/aws-isucon)） | isu1・isu2 の `~/env.sh` の `ISUCON13_POWERDNS_SUBDOMAIN_ADDRESS` を各自のプライベート IP にして `sudo ~/webapp/pdns/init_zone.sh`・`systemctl restart isupipe-go`。bench ホストはアプリ一式を `disable --now` し、`/etc/hosts` に isu1・isu2 を書き、`rehearsal/isucon13-bench.sh` を `~/isu-bench.sh` に置く。`BENCH_CMD="ssh bench /home/isucon/isu-bench.sh"`。負荷走行の向き先は固定しない：マニュアルの注記に「向き先（名前解決の対象サーバ）は isu1・isu2 から選べる。変えるときは人間に頼む（ポータルの操作に相当）」と書き、頼まれたら人間が `BENCH_CMD="ssh bench TARGET=isu2 /home/isucon/isu-bench.sh"` に書き換える |
 
 ## リハーサル後にやること（毎回）
 1. **片付けの確認**。全部確かめてから評価に入る
@@ -52,7 +57,7 @@
    - docker：`docker compose ls -a` が空。リハーサルの時間帯に作られたイメージ・匿名ボリュームを消す（作成日時で見分ける。他のプロジェクトのものに触れない）
    - Orca：`~/orca/workspaces/<repo>/` に worktree が残っていない
 2. **評価**（`## #N の評価` として下に書く）
-   - **作業時間の割合**：Phase 1 の所要、ベンチ枠の稼働率、ベンチの内訳（変更の測定・ベースライン・再起動確認・retry）、Implementer の作業時間と待ち時間、人間待ち。律速と改善できる点
+   - **作業時間の割合**：Phase 1 の所要、ベンチ枠の稼働率（`rehearsal/bench-util.sh` で「列に待ちがあった時間での稼働率」と「列が空だった時間」に分ける。前者は Coordinator の判断・作業の速さ、後者は変更の供給）、ベンチの内訳（変更の測定・ベースライン・再起動確認・retry）、Implementer の作業時間と待ち時間、人間待ち。律速と改善できる点
    - **解法の妥当性と検討漏れ**：公式の解説・講評、上位チームの参加記と、実施した打ち手を比べる
    - **自作ベンチ（localbench）の品質**：verify の利用と見逃し、run.sh の有無と使われ方
    - 材料：`state/bench.jsonl`・`verdicts.jsonl`・`analysis/*/`・`reports/`・`docs/insights.md`、`orca orchestration task-list --run <run_id> --json`、Coordinator のセッション記録（`~/.claude/projects/<競技リポジトリのパス>/*.jsonl`）
@@ -151,3 +156,119 @@
 - 見逃し：0点の1回は pdns.conf の権限（設定ファイルの配置）で、ローカル環境に nginx・DNS が無いため検査の対象外。設定の変更には効かない
 - run.sh（負荷）は作られず、Implementer も「時間制約」「1案のみ」で負荷の比較をしなかった。方式を比べる場面がなかったので影響はない
 - 補足：setup は pdns.conf を「認証情報を含む」として auto モードでリポジトリに入れられず、後の設定タスクが別の権限で配置して0点を出した。秘密を含む設定ファイルの扱いを決めておく
+
+## #4 の評価（ISUCON14、3台）
+
+構成：本番相当の c5.large ×3 と、ベンチ専用ホスト（c6a.large）。ベンチは bench から向き先（既定 isu1）に向けて走り、決済サーバは bench 上に立つ。競技時間は3時間（18:27〜21:30 の設定）。
+
+### 作業時間の割合
+稼働は約1時間40分（18:27〜20:09）。END の1時間20分前に終えた。
+
+| 区分 | 時間・割合 | 所見 |
+|---|---|---|
+| Phase 1 | 最初のベンチまで8分、ベースライン4回の終了まで19分（#3 は9分・14分） | survey は2分、setup は14分。setup が psdigest で SELECT が出ないことに気づき slow log に切り替えた（受け入れ条件が働いた）。localbench-init は26分で並行 |
+| 人間待ち | ゲート3件（DB 分離の承認、Phase 3 の前倒し、終了の確認）。Phase 2 開始の待ちは0 | 開始のゲートの廃止で、ベースラインの直後に Phase 2 に入れた |
+| ベンチ枠 | 最初から最後までの93分のうち稼働46分（50%）。1回は平均93秒。ベンチの間の空きは中央値81秒・最大6分 | **#3（76%）より下がった**（課題6） |
+| ベンチの内訳 | 30回：変更の測定23、retry 1、ベースライン等4、再起動確認2 | 変更を測らないベンチは 7/30。途中の再起動確認は1回（pending 3件）、final は最後のマージの後に1回だけ（課題7 の対応が効いた） |
+| Implementer | 作業は中央値4分・最大15分。マージ待ちは中央値4分・最大16分 | 実装は速い。同時実行数3は守られた |
+| Analyst | 7回、所要は中央値2分 | spec で「N分以内にレポート」と絞られ、分析が浅い（課題5） |
+
+→ 最大の問題は**時間を使い切らなかったこと**。Coordinator が Phase 3 の開始（20:30）を実装の締め切りとして扱い、19:20 ごろから spec を「20:15 までに」「小さく確実なものだけ」と絞った。Analyst は遊休の isu3 の活用などを「時間内に不適」と見送り、最後は0件を返し、在庫切れを理由に Phase 3 を前倒しした（課題5）。
+
+### 公開されている解法との比較
+参照は #2 と同じ（[公式の解説と講評](https://isucon.net/archives/58869617.html)、[LayerX の参加記](https://zenn.dev/layerx/articles/3bd55b77e047c4) 本番中 48,615点）。
+
+| 打ち手 | 公式・上位チーム | リハ#4 |
+|---|---|---|
+| インデックス、N+1、interpolateParams | 序盤の定番 | すべて実施（888 → 6,582） |
+| マッチング：一括・最寄り優先、速度・目的地の考慮 | 中盤の本体 | 実施。一括・最寄りで 6,582 → 15,577（2.4倍）。ただし列の順位では最下位に出た（課題4） |
+| **DB を別ホストへ分離** | LayerX で最大の伸び | Analyst が初回から提案し、15,577 → 26,384（+69%）。#2 で取りこぼした打ち手を拾えた |
+| 椅子の最新位置・総距離のテーブル化、nearby-chairs の1クエリ化 | 中盤 | 実施（26,390 → 38,826、41,781 → 70,480） |
+| 通知の間隔を伸ばす（上位は 1000ms まで） | 上位の主要な伸び | 300ms、のち状態に応じて可変。1000ms までは試していない |
+| coordinate の非同期化・バルク INSERT（座標反映の3秒の猶予） | 公式の想定解 | 一部。トランザクション外し・履歴 INSERT の削除・最新位置のテーブル化まで。非同期化・まとめ書きは未着手 |
+| **3台目の活用**（アプリの複数台化、matcher や DB の配置） | 上位チームは3台を使う | **未着手**。最終盤も isu3 は CPU 1%。isu2 の mysqld が2コアの67%、isu1 のアプリと nginx で56%。Analyst は2回とも「構成変更で時間内に不適」と見送った |
+| 決済の Idempotency-Key、SSE | 必須ではない | 未実施で妥当 |
+
+→ スコアは本番相当の3台で 79,685。LayerX の本番中のスコアを上回るが、ベンチの実行ホストが違うので厳密には比べられない。取りこぼしは2つ。(1) 3台目を使わなかった、(2) 反映の猶予（3秒）を使い切る非同期化に届かなかった。どちらも時間が残っていたのに、時間制約を理由に見送った。
+
+### 自作ベンチ（localbench）の品質
+- 作り：verify.sh は初期化からライド4本の全遷移まで215応答を基準と比べ、通知の順序・運賃と決済金額・最新座標・総距離などの不変条件も確かめる。run.sh（負荷30秒、score は採点式の真似）もある
+- 使われ方：Implementer の worker_done 28件のうち `verify=ok` が21件、`none` が7件（設定の変更など）。run.sh を使った比較はレポート10件で言及
+- 見逃し：キャッシュとトランザクション外しで、ベンチの整合性の WARN（総乗車回数の不一致）が17件 → 103件に増えたが、verify は通った。ローカルの負荷では競合の窓が開かず、単発の遷移では再現しない。LocalBench の改善も起動しなかった（起動条件が fail だけのため。課題7）
+
+
+## #5 の評価（ISUCON12予選、3台）
+
+構成：本番と同じ c5.large ×3 とベンチ専用ホスト（c6a.large）。ベンチは bench から isu1 に向けて走る。競技時間は3時間（12:55〜16:00 の設定）。
+リハーサル固有の中断が2つあった。(1) ssh 越しに起動したベンチマーカーの fd 上限が 1024 のままで、速くなると `socket: too many open files` で fail した（13:46。ラッパーに `ulimit -n 65536` を入れて解消）、(2) 手元の接続元 IP が変わり、SG で弾かれて約20分 ssh が届かなかった（14:08〜14:27）。
+
+### 作業時間の割合
+稼働は約2時間40分（12:55〜15:34）。END の26分前に終えた。
+
+| 区分 | 時間・割合 | 所見 |
+|---|---|---|
+| Phase 1 | 最初のベンチまで10分、ベースラインの終了まで20分 | setup は11分。SQLite が主で MySQL のクエリ集計にはアプリの主要なクエリが出なかったが、SQLite 側の計測は入らなかった（課題9） |
+| 人間待ち | ゲート6件（DB 移設、アプリ2台化、0点の判断、ssh 不達×2、終了の確認）。どれも数分 | ssh 不達で Coordinator がゲートを出し、復旧の確認まで deploy を止めたのは妥当 |
+| 人間の介入 | 13:41〜14:52 に人間が Implementer の並列度を1にした | この間はベンチの列が空になりがちだった。稼働率の比較は割り引いて見る |
+| ベンチ枠 | 13:05〜15:30 の145分のうち稼働45分（31%。ssh 不達の30分を除くと39%）。1回は平均103秒。ベンチの間の空きは中央値127秒 | **#4（50%、空きの中央値81秒）より下がった**。並列度1と中断の影響が大きいが、1回ごとの空きも縮んでいない（課題11） |
+| ベンチの内訳 | 26回：変更の測定18（まとめて適用1回）、0点の再計測1、ベースライン等4、再起動確認2、retry 1 | 途中の再起動確認は1回、final は最後のマージの後に1回 |
+| Implementer | 完了は38タスク（Analyst・LocalBench を含む）。`verify=ok` 14件、`none` 4件 | 実装は速い |
+| Analyst | 4回（8件・4件・1件・7件） | 初回から DB の別ホスト化を、2回目でアプリの2台化（遊休の isu3 の活用）を出した（#4 の課題5 の対応が効いた） |
+| Phase 3 | 15:15 に予定どおり開始（前倒しなし）。15:25 に計測の無効化、15:28 に final の再起動確認、15:34 に終了 | **Phase 3 の所要は19分で、END まで26分残った**（課題10） |
+
+### 公開されている解法との比較
+参照：[公式の解説と講評](https://isucon.net/archives/56850281.html)（予選突破相当の参考値は SQLite のまま1台で 24,000点）、[関連エントリまとめ](https://isucon.net/archives/56836729.html)。
+
+| 打ち手 | 公式・上位チーム | リハ#5 |
+|---|---|---|
+| N+1 の解消、1行ずつの INSERT のまとめ | 定番 | 実施（2,304 → 10,286） |
+| ID 採番（採番テーブルの更新）をやめる | 想定解 | 実施（アプリ内採番） |
+| visit_history を「最初の1行」だけに | 想定解 | 実施（visit_first） |
+| player_score を参加者ごとの最新行だけに | 移行の成否を分けた点 | 実施（ただし採否はノイズ幅内） |
+| billing を大会終了時に1回だけ計算 | 想定解 | 実施（未終了は計算せず、終了済みはキャッシュ） |
+| ranking・参加者 API のキャッシュ | 想定解 | 実施（73,016 まで） |
+| flock の排他をやめる | 想定解 | 一部（WAL・busy_timeout、テナントの排他を RWMutex に） |
+| 複数台への分散 | 上位の定番（MySQL 移行・テナントの振り分け） | MySQL を isu2 へ、アプリを isu1・isu3 にテナントで振り分け（73,016 → 132,904）。SQLite から MySQL への移行はしていない |
+| SQLite 接続の使い回し | — | 試して大きく下がり（155,551 → 35,803）revert |
+
+→ 公式の想定解はほぼ拾えた。3台の活用も Analyst が自分から出した。ベンチの実行ホストが違うので、当時のスコアとは比べられない。
+
+### 自作ベンチ（localbench）の品質
+- verify はアプリの変更14件で使われ、本番で整合性の fail は0件
+- run.sh は作られたが、方式の比較に使われたかは未確認
+- 0点の2回はどちらも接続数の上限（ベンチ側の fd・nginx の worker_connections）で、ローカルの検査の対象外
+
+## #6 の評価（ISUCON12本選、5台）
+
+構成：c5.large ×5 とベンチ専用ホスト（c6a.large）。ベンチは bench から isu1 に向けて走る。競技時間は4時間の設定（17:22〜）。18:56〜22:09 は人間が止め、再開時に END を延ばした（Coordinator に口頭で頼んだ）。手元の接続元 IP が NAT で何度も変わり、ssh が2回届かなくなった（18:05〜18:32 と、再開直後。SG に足して解消。リハーサル固有。Coordinator はどちらもゲートで人間に知らせ、復旧まで deploy を止めた）。
+
+### 作業時間の割合
+稼働は約2時間55分（17:22〜18:56 の94分、22:09〜23:28 の79分）。
+
+| 区分 | 時間・割合 | 所見 |
+|---|---|---|
+| Phase 1 | 最初のベンチまで10分、ベースラインの終了まで22分 | manual が本文のリンク先（アプリのマニュアル）を自分で取得し `app-manual-raw.md` に保存した。setup は初回の psdigest で主要な SELECT が出ないことを確かめて slow log に切り替え、置き場所の表を作った（見えない行は無く、measure-extra は起動されなかった） |
+| 0点からの立ち上げ | ベースラインは pass・score 0。0点の解消（/login のデッドロック、history の index）で 18:43 に 7,254 | ベースラインの終了から最初の pass まで約55分。うち27分は接続断（18:05〜18:32）。0点の解消タスクは2本が順に必要で、1本目の後も0点のままゲートで止まった（課題17）。0点の間に、待ち時間の繰り上げで効果の小さい項目が先頭に来た（課題16） |
+| 人間待ち | ゲート9件（0点の判断×2、DB 分離×2（「0点解消の後に再判断」の後に再度）、ssh 不達×2、縦分割、終了） | 縦分割のゲートは期限付き（既定は却下）で、期限内に承認された |
+| ベンチ枠 | 中断と接続断を除く133分のうち稼働65分（48%）。1回は平均149秒（初期化だけで30〜47秒） | `bench-util.sh state 18:05-18:32 18:56-22:09`：列に待ちがあった時間での稼働率は69%（空きの中央値61秒/回）。列が空だった時間は40分（0点の解消待ちと、Phase 3 で1件ずつ入った時間） |
+| Phase 3 | 23:15 開始、23:24 に final の再起動確認、23:28 に終了の承認 | 計測の無効化は Phase 3 の前に入った |
+| Browser | Phase 3 で1回（本番、`with-bench-lock.sh` 経由。bug 0件） | **Phase 2 では起動されなかった**（22:55〜23:12 は列が空だった）。初期状態の記録が無く、本番の確認は初期の API 応答の記録と比べた（課題17） |
+| 3台目以降 | isu1 アプリ、isu2 DB、isu5 に user_presents 系の DB。**isu3・isu4 は最後まで遊休** | Analyst は「アプリを isu1・isu3・isu4 に分散」を `needs_human` で出したが、Coordinator がゲートを作らず未着手のまま終わった（課題16） |
+
+### 公開されている解法との比較
+参照：[公式の解説と講評](https://isucon.net/archives/56959385.html)（優勝 約34万点、作問側の想定 25〜30万点。5台は「App 1台・DB 4台」が良い配分）。
+
+| 打ち手 | 公式・上位チーム | リハ#6 |
+|---|---|---|
+| ログインの重さ（ボーナス・プレゼントの N+1、index） | 最も重い処理 | 実施（0点の解消、N+1、index） |
+| ID 採番をアプリ側に | 想定解（Snowflake のような方式） | 実施（id_generator のブロック予約、+37%） |
+| マスタの全件キャッシュ | 想定解 | 実施（+23%） |
+| プレゼントの受け取り前・済みの分割、件数の削減 | 想定解 | 一部（user_presents 系を isu5 へ縦分割、+58%） |
+| **DB の水平分割（App 1台・DB 4台）** | 特に重要 | **未着手**。DB は isu2 と isu5 の2台まで。isu3・isu4 は遊休 |
+| セッション・ワンタイムトークンの処理 | 定番 | 実施（デッドロック解消、検証の UPDATE 1本化） |
+
+→ 稼働3時間弱で 182,960。取りこぼしは DB の水平分割と遊休の2台。Analyst は台数の活用を出していたので、仕組みの問題（課題16）。
+
+### 自作ベンチ（localbench）の品質
+- verify の誤検知（id_generator 由来の ID の揺れ）を1回直した
+- 0点の解消は本番のベンチの結果（タイムアウト・デッドロック）から特定され、ローカルでは再現していない

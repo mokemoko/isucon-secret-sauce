@@ -7,68 +7,69 @@
 
 | # | 課題 | 状態 |
 |---|---|---|
-| 1 | [リハ#3] new-top-level worktree のブランチ名が `<git user>/<name>`（例 mokemoko/localbench-init）で、coordinator.md の `impl/<task_id>` と一致しない | todo |
-| 2 | [リハ#3] クエリ集計（psdigest）がプリペアドステートメントのクエリを拾わない | todo |
-| 3 | [リハ#3] 30分の一時停止が実際は約50分になり、A（END を30分延長）の前提（15:50 再開）が崩れて Phase 3 の開始を過ぎてから再開した | todo |
-| 4 | [リハ#3] Implementer のブランチが古い base のままだと、終盤のマージで競合が多い（NG キャッシュ、予約軽量化、DB 分離） | todo |
-| 5 | [リハ#3] DB_HOSTS がアプリの DB だけで、別用途の DB の負荷が見えない | todo |
-| 6 | [リハ#3] Coordinator が列の順位・まとめ方・同時実行数の規則から外れた | todo |
-| 7 | [リハ#3] 最終の再起動確認の後にマージして、確認をやり直した | todo |
-| 8 | [リハ#3] Phase 2 開始のゲートで10分待った | todo |
-| 9 | [リハ#3] 秘密を含む設定ファイルをリポジトリに入れられず、別経路の配置で0点 | todo |
-| 10 | [リハ#3] appmap タスクが dispatched のまま終わらなかった | todo |
-| 11 | [リハ#3] リハーサルの負荷走行の向き先が固定で、本番の「向き先の選択」を試せない | todo |
+| 13 | [リハ#6] ワーカー（appmap）が Claude の API エラー（応答の途中切断）でターンを終え、worker_done を送らないまま dispatched で止まった | done |
+| 14 | [リハ#6] ダッシュボードの判断待ちの自由回答が、入力中に3秒ごとに消える | done |
+| 15 | [リハ#6] クエリの計測の既定が performance_schema の digest 集計だが、プリペアドステートメントのクエリは digest に出ず、毎回 slow log に切り替えている | done |
+| 16 | [リハ#6] queue.sh rank で20分待ちの `*` が付いた優先度 0.04 の項目が、0点の主因（優先度 1.14）より上の順位・次の batch になった | done |
+| 17 | [リハ#6] ベースラインから0点が続く間、0点解消タスクのベンチのたびに人間のゲートで止まる（原因が段階的に解けるときも毎回止まる） | done |
+| 18 | [リハ#6] PROBE_URLS のユーザがベンチで作られたもので、DB の移設後に再起動確認が止まった | done |
+| 19 | [リハ#6] Analyst が `needs_human` で出した「アプリの複数台化」に Coordinator がゲートを作らず、未着手のまま終わった（isu3・isu4 が最後まで遊休） | done |
+| 20 | [リハ#6] Phase 2 で Browser が起動されず（列が空の時間があった）、Phase 3 の本番の確認に初期状態の記録が無かった | done |
+| 21 | [リハ#6] アプリの env ファイル（DB の接続先・パスワード入り）を setup が auto モードの判定でリポジトリに入れられず、DB の移設に人間の手作業が要るとされた | done |
 
 ---
 
-## 1. worker-start のブランチ名
-- 現象：`--worktree new-top-level --name localbench-init` で作られたブランチが `mokemoko/localbench-init`
-- 影響：coordinator.md の手順3 `git merge origin/impl/<task_id>` がそのままでは使えない
-- 回避策：worktree ps / worker_done の要約で実際のブランチ名を確認してマージする
+## 13. API エラーでワーカーが worker_done を送らずに止まる
+- 現象：appmap が起動から約1分後に `API Error: The response stopped arriving` でターンを終えた。Orca 上は dispatched・live のままで、activity だけが done。人間が UI で failed 表示に気づいて判明した（Coordinator の check には何も来ない）
+- 影響：約20分、appmap が進まなかった。30分の点検（dispatched のまま30分）より前に気づく手段が無い
+- 回避策：`orca terminal send --terminal <handle> --text "...再開..." --enter` で再開させた。点検で `worker-show` の `projection.stage.activity=done` かつ dispatched のものを拾うと早く気づける
+- 対応案：メインループの「終わらないタスクの点検」を、30分を待たずタイムアウトのたびに行い、`worker-show` で `activity=done` かつ dispatched のワーカーに「worker_done を送るか作業を再開する」よう `orca terminal send` する
+- 対応：`bin/stalled-workers.sh` を足した（activity=done の dispatched を初めて見た時刻を残し、STALL_MIN 分（既定5）続いたものを出す）。Coordinator はタイムアウトのたびに実行し、出たワーカーに `orca terminal send` で再開か worker_done を促す。KNOWLEDGE.md に追記
 
-## 2. クエリ集計（psdigest）がプリペアドステートメントのクエリを拾わない
-- 現象：Go の database/sql（interpolateParams なし）だと、引数つきのクエリはバイナリプロトコルで実行され、performance_schema の digest 集計に出ない可能性が高い。序盤のベンチでは上位30件のうち SELECT が4件だけで、COMMIT と初期化の INSERT が上位を占めた。interpolateParams を入れた後のベンチでは SELECT が18件に増えた
-- 影響：序盤の一番重い SELECT が見えず、Analyst は endpoints・pprof・コードで代用した（insights に「queries は信頼できない」と書かれた）
-- 対応案：setup の受け入れ条件に「アプリの主要な SELECT が queries.json に出ること」を入れ、出なければ slow log（`QUERY_DIGEST=pt`、long_query_time=0）に切り替える。`knowledge/measurement.md` に注意を書く。原因の確認（`events_statements_summary_by_digest` と `prepared_statements_instances` の挙動）は次のリハーサルで
+## 14. 判断待ちの自由回答が消える
+- 現象：ダッシュボードは3秒ごとに判断待ちの一覧を描き直していた。フォーカスは戻すが入力欄の中身は戻さないため、自由回答を書いている途中で消える（日本語の変換中も切れる）
+- 影響：ゲートに選択肢以外の回答を送れない
+- 対応：ゲートの内容（id・質問・選択肢・送信済みの回答）が変わったときだけ描き直す。書きかけは gate id ごとに保持して描き直しでも戻す。変換中の Enter では送信しない。偽の orca でゲートを1件出し、入力から10秒後も残ることを確かめた
 
-- Coordinator の記録（リハ中）：query-psdigest.raw が30行のみで SELECT が落ちている。sum の単位混在か取得件数の制限を疑った。回避策は endpoints・pprof・コードで判断する
+## 15. digest 集計にプリペアドステートメントのクエリが出ない
+- 現象：リハーサル #3〜#6 のすべてで、setup が psdigest では主要な SELECT が見えないとして slow log + pt に切り替えた
+- 事実確認（2026-10-15、手元の docker、MySQL 8.0.34 と 8.4.11、go-sql-driver/mysql v1.7.1）：`interpolateParams=false`（サーバ側のプリペアドステートメント）で SELECT・UPDATE を各50回流すと、`events_statements_summary_by_digest` には1件も出ず、`events_statements_summary_global_by_event_name` の `statement/com/Prepare`・`statement/com/Execute` の回数にだけ現れた。`db.Prepare` で明示的に準備した文（30回）も同じ。`interpolateParams=true`（テキストプロトコル）にすると digest に出た。`prepared_statements_instances` は Close 済みの文が消えるため、ベンチ後の集計には使えない
+- 影響：アプリが既定のドライバ設定（多くの言語・ORM はサーバ側のプリペアドステートメント）なら、digest 集計では主要なクエリが見えない。setup が毎回切り替えの手間を払い、気づかなければ計測の死角になる
+- 対応案：計測の既定を slow log（`long_query_time=0`）+ pt-query-digest にし、ベンチ中の slow log の書き込みがボトルネックになった（`resources.json` で mysqld の I/O・CPU が目立つ、slow log の量が大きい）ときと、アプリがテキストプロトコルで動くようになった（`interpolateParams` の導入後など）ときだけ digest に切り替える。recon.md の setup 手順・受け入れ条件、`env.example.sh` の `QUERY_DIGEST` の既定、`knowledge/measurement.md` の「既定」を入れ替える。Phase 3 の計測の無効化に slow log を止める手順は既にある。リハーサル中はプロンプトを変えないため、終了後に入れる
+- 対応：既定を slow log + pt に入れ替えた（recon.md の setup、`env.example.sh` の `QUERY_DIGEST=pt`・`LOG_FILES`、`bin/bench.sh`・`bin/digest.sh` の既定値、`templates/mysqld.cnf`、`knowledge/measurement.md`・`middleware.md`）。digest への切り替えは、slow log の書き込みが重いときか、アプリがテキストプロトコルで実行するようになったときだけ
 
-## 3. 一時停止と END
-- 現象：人間の指示で一時停止。「30分延長」を選んで再開したのは 16:10 で、新しい Phase 3 の開始（16:00）を過ぎていた
-- 影響：マージ待ちの列を流し切れず、DB 分離などを見送った
-- 回避策：再開時に END を「停止時間の分だけ」延ばすか、その場で人間に聞く
+## 16. 待ち時間の優先が0点の解消を追い越す
+- 現象：ベースラインが0点の間、20分以上待った（`*`）優先度 0.04 の項目が、0点の主因を直す優先度 1.14 の項目より上に並び、次の batch になった（Coordinator が気づいて止めた）
+- 影響：0点の間に効果の小さい変更を測ることになる
+- 対応案：queue.sh rank の AGE_MIN の繰り上げを、タイトルが `[0点解消]` の項目より上には上げない（または最新の pass ベンチが score 0 の間は繰り上げを止める）
+- 対応：queue.sh rank は、ベースラインから0点が続く間（pass かつ score>0 がまだ無い）、`[0点解消]` を先頭に並べ、待ち時間の繰り上げをしない。Coordinator は0点の解消タスクのタイトルに `[0点解消]` を付ける
 
-## 4. 終盤の競合
-- 現象：列で待つ間に main が進み、終盤のマージ3件が競合した
-- 影響：リベースのためにワーカーを再起動する時間が無く、見送った
-- 回避策：列で20分以上待ったものには、待っている間にリベースを依頼する
+## 17. 0点の解消のたびにゲートで止まる
+- 現象：coordinator.md の「ベースラインから0点が続いている間は、0点の解消タスクのベンチが0点のままでも同じくゲートで判断を仰ぐ」に従い、1本目の0点解消（デッドロック）の後も0点のままでゲートになった。原因は2段（デッドロック → history の全走査）で、2本目の後に解消した
+- 影響：0点の間は1本ごとに人間の回答を待つ。ベースラインからの立ち上げが遅れる
+- 対応案：ベースラインから0点が続く間は、0点解消のベンチが0点のままでもゲートを出さず、減点の内訳（bench.txt のエラーの種類）が減っていれば次の0点解消を流す。エラーの種類が増えた・変わらないときだけゲート
+- 対応：ベースラインから0点が続く間は、`[0点解消]` のベンチが0点のままでも、減点の件数（`penalty=`、無ければ `warnings=`）が前回より減っていればゲートを出さずに次の `[0点解消]` を流す。減っていない・増えたときだけゲート
 
-## 5. DB_HOSTS がアプリの DB だけで、別用途の DB の負荷が見えない
-- 現象：アプリの DB を isu2 に分離した後、Coordinator が `DB_HOSTS` を isu2 だけにした。isu1 には別のミドルウェアのバックエンドの MySQL が残り、最終でも1コアの72%を使っていたが、クエリ集計の対象から外れた。resources には出ていたが、Analyst はボトルネックとして扱わなかった
-- 影響：その DB を軽くする打ち手が終了まで未着手
-- 対応案：`DB_HOSTS` は DB が動く全ホストにする（DB の役割を移しても外さない）。analyst.md の「毎回の点検」に「resources の上位プロセスのうち、endpoints・queries で説明できないものを調べる」を足す
+## 18. PROBE_URLS のユーザがベンチで作られたものだった
+- 現象：DB を isu2 に分離した後、restart-check.sh が「再起動前の時点で PROBE_URLS に失敗する URL がある」で止まった。/admin/user/1230 は、id_generator が 0 から採番されていた頃にベンチが isu1 の DB に作ったユーザで、isu2 には無い
+- 回避策：初期データの最小 ID のユーザ（2626206）に差し替えた。probe は初期データにある ID を選ぶこと
+- 対応案：recon.md の PROBE_URLS の選び方に「初期データ（初期化で戻るデータ）にある ID を使う。ベンチが作ったデータは初期化や DB の移設で消える」を足す
+- 対応：recon.md の PROBE_URLS に「初期データ（`/initialize` で戻るデータ）にある ID を使い、`/initialize` の直後にも通ることを確かめる」を足した
 
-## 6. Coordinator が列の順位・まとめ方・同時実行数の規則から外れた
-- 現象：(1) `queue.sh rank` の先頭（`.batch`）が最大の打ち手だったのに、別の2件を独自にまとめて先に流した。うち1件は restart_risk（まとめの対象外）で、その結果0点になった。(2) Implementer を開始直後に8件同時に起動した（規定は最大3）
-- 影響：最大の伸び（+34%）の採用が遅れ、その間に競合が生じてリベースが要った
-- 対応案：列の順位を飛ばすのは人間の示唆があるときだけ、`.batch` を独自に組み替えない、を coordinator.md で強める。同時実行数は、ベンチ枠が律速であることを踏まえて上限を決め直す（人間の判断）
+## 19. needs_human の仮説にゲートが作られない
+- 現象：Analyst（174505）が「[restart] アプリを複数台に分散する（isu1 の nginx から isu1・isu3・isu4 の Go に振り分け）」を `needs_human=true` で出した。Coordinator はタスクを作ったが、ゲートを作らず、最後に failed で閉じた。DB の分離・縦分割にはゲートを作っていた
+- 影響：isu3・isu4 は最後まで遊休。公式の講評では5台を App 1・DB 4 に使うのが良い配分だった
+- 対応案：coordinator.md の Analyst の完了時の手順で、`needs_human` のものはタスク作成と同じ手順の中でゲートを作ることを明示し、タイムアウトのたびに「ゲートの無い needs_human のタスク」が無いかを点検する（task-list と gate-list の突き合わせ）
+- 対応：needs_human のタスクはタイトルに `[要承認]` を付け、同じ手順でゲートを作る。after-bench.sh に「承認待ちの仮説」を足し、ゲートの無い `[要承認]`（ゲート未作成）と、回答済みで未着手のもの（回答済み・未着手）をベンチのたびに出す
 
-## 7. 最終の再起動確認の後にマージして、確認をやり直した
-- 現象：Phase 3 で `restart-check.sh final` を実行した後に、DB 分離など2件をマージし、最終確認をもう一度行った
-- 対応案：Phase 3 の手順で、最終の再起動確認は「最後のマージの後」と明記する
+## 20. Phase 2 で Browser が起動されない
+- 現象：22:55〜23:12 に列が空だったが、Browser（target=local）は起動されなかった。Phase 3 の Browser（target=prod）は `$STATE/browser/initial/` が無く、初期の API 応答の記録と比べた
+- 影響：初期状態の画面の記録が無いので、挙動の違いを画面で比べられない
+- 対応案：初期状態の記録を、在庫が減るのを待たずに Phase 2 の最初の空き（Implementer の枠の外）で取る（Browser の初回は記録だけ）。起動条件の点検をメインループのタイムアウトの点検に入れる
+- 対応：local の完了後に Browser を `mode=record`（初期状態の記録だけ）で在庫に関係なく1回起動する。起動条件の点検をタイムアウトの点検に入れた
 
-## 8. Phase 2 開始のゲートで10分待った
-- 現象：ベースライン後の「Phase 2 を開始してよいか」の回答に10分かかり、稼働の約14%が空いた
-- 対応案：期限付きゲート（例：5分で承認扱い）にする
-
-## 9. 秘密を含む設定ファイルをリポジトリに入れられず、別経路の配置で0点
-- 現象：setup はミドルウェアの設定ファイルを「認証情報を含む」として auto モードでリポジトリに入れられなかった。後の設定タスクがそのファイルを別の権限で配置し、初期化が 500 になって0点になった（1回、人間の判断で修正）
-- 対応案：private リポジトリなので競技サーバの設定ファイルは入れてよい、と recon.md に明記するか、入れない場合は「deploy で配置しない」を setup の成果物に書く
-
-## 10. appmap タスクが dispatched のまま終わらなかった
-- 現象：app-map.md は書かれたが、タスクは終了まで dispatched のまま。worker_done が届かなかったか、Coordinator が処理しなかった
-- 対応案：次のリハーサルで worker の画面と Coordinator の記録を確認する
-
-## 11. リハーサルの負荷走行の向き先が固定で、本番の「向き先の選択」を試せない
-- 現象：本番はポータルで負荷走行の向き先（名前解決の対象サーバ）を選べるが、リハーサルの注記で isu1 に固定した
-- 対応案：ラッパー（`TARGET=isu2`）で選べるので、注記を「向き先は人間に頼めば変えられる（ポータルの操作に相当）」に変える。Coordinator が人間にゲートで頼む流れを試す
+## 21. 認証情報を含む env ファイルをリポジトリに入れられない
+- 現象：アプリの EnvironmentFile（DB の接続先・パスワード）を、setup が auto モードの判定（認証情報の持ち出し）でリポジトリに入れられず、「書き換えは人間の手作業」とした。DB の分離の Implementer は、systemd の drop-in（`EnvironmentFile=` を後から読ませて `ISUCON_DB_HOST` だけ上書き）をリポジトリに入れて回避した
+- 影響：構成の変更のたびに人間の作業が要るように見え、ゲートが増える（#3 でも同じ種類の問題）
+- 対応案：recon.md の setup に「認証情報を含むファイルを入れられないときは、原本はサーバに残し、変える値だけを上書きするファイル（systemd の drop-in、`conf.d/`、別の env ファイル）をリポジトリに入れて deploy する」を書く。knowledge にも同じパターンを足す
+- 対応：recon.md の setup に「原本はサーバに残し、変える値だけを上書きするファイル（systemd の drop-in、`conf.d/`）をリポジトリに入れて deploy する」を書いた。knowledge/middleware.md にも同じパターンを足した

@@ -57,9 +57,10 @@
 2. リポジトリ直下の `Makefile` に `deploy` ターゲットを作る。中身は、ビルド、設定ファイルの配置（ホスト名で分岐してよい）、サービス再起動。サーバ上で `make deploy` が冪等に通ること
 3. 計測を有効化する
    - nginx のアクセスログを JSON 形式にし、`request_time` を含める。書き込みは `access_log <path> <format> buffer=64k flush=1s;` でバッファリングする（1リクエストごとの write を減らすため。ベンチ後の回収は1秒以上後なので取りこぼさない）
-   - クエリの計測は **performance_schema の digest 集計を既定にする**（slow log は有効にしない。負荷が大きいため）。MySQL 8.0 なら `SELECT ENABLED FROM performance_schema.setup_consumers WHERE NAME='statements_digest'` が YES であることを確認し、env.sh に `QUERY_DIGEST=psdigest`・`DB_HOSTS`・`MYSQL_CMD` を書く。`bin/digest/query-psdigest.collect.sh post <host> /tmp/x` が行を返すことを確かめる
+   - クエリの計測は **slow log（`long_query_time=0`）+ pt-query-digest を既定にする**。アプリがサーバ側のプリペアドステートメントで実行するクエリは performance_schema の digest 集計に出ないため（`$ORC/../knowledge/measurement.md`）。MySQL の設定（`$ORC/../templates/mysqld.cnf` の slow log の節）で有効にし、env.sh に `QUERY_DIGEST=pt`・`DB_HOSTS`・`MYSQL_CMD` を書き、slow log のパスを `LOG_FILES` に足す
+   - アプリがテキストプロトコルで実行している（Go なら DSN に `interpolateParams=true` がある）と分かっているなら、軽い digest 集計（`QUERY_DIGEST=psdigest`）でもよい。`SELECT ENABLED FROM performance_schema.setup_consumers WHERE NAME='statements_digest'` が YES であることと、`bin/digest/query-psdigest.collect.sh post <host> /tmp/x` が主要な SELECT を返すことを確かめる
    - `DB_HOSTS` には MySQL が動く**全ホスト**を書く（アプリの DB だけでなく、別のミドルウェアのバックエンドなど別用途の MySQL も）
-   - **受け入れ条件**：手順5のベンチの後、`$STATE/analysis/<bench_id>/<host>/queries.json` に、アプリのコードの主要な SELECT（重いエンドポイントが発行するもの）が出ていること。COMMIT・INSERT ばかりで SELECT がほとんど出ない場合は、プリペアドステートメント（Go の database/sql で DSN に `interpolateParams=true` が無いなど）のクエリが digest 集計に出ていない可能性がある。slow log（`long_query_time=0`）に切り替えて `QUERY_DIGEST=pt` にし、その旨を `$STATE/docs/env.md` に書く（詳細は `$ORC/../knowledge/measurement.md`）。アプリの DSN はこのタスクでは変えない（ベースラインを変えるため。`interpolateParams` は Analyst が仮説として出す）
+   - **受け入れ条件**：手順5のベンチの後、`$STATE/analysis/<bench_id>/<host>/queries.json` に、アプリのコードの主要な SELECT（重いエンドポイントが発行するもの）が出ていること。digest 集計にしていて COMMIT・INSERT ばかりで SELECT がほとんど出ない場合は、プリペアドステートメントのクエリが出ていない。slow log に戻す。アプリの DSN はこのタスクでは変えない（ベースラインを変えるため。`interpolateParams` は Analyst が仮説として出す）。slow log の書き込みの負荷が目立つときに digest へ切り替えるのは Analyst の仮説として扱う（切り替えたら主要な SELECT が出ることを確かめる）
    - DB が MySQL 8.0 以外（MariaDB、PostgreSQL など）や、構成が想定と違う場合は、**`$ORC/../knowledge/measurement.md` を読んで**計測方法を選ぶ。足りないアダプタは `$ORC/bin/digest/` に足してよい（`$ORC` の変更はこの setup タスクに限り可）
    - アプリに pprof（または言語相当）を入れる。アプリが動く全台を env.sh の `PPROF_HOSTS` に書く
    - alp 設定（URI の正規化パターン）を作る。nginx の JSON ログ・alp・MySQL の設定は `$ORC/../templates/` の雛形と見比べ、必要な部分だけ取り込む（丸ごと置き換えない）

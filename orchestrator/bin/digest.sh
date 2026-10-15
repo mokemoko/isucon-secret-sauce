@@ -15,7 +15,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 set -a; . "${ENV_FILE:-./env.sh}"; set +a
 dir=$1 result=${2:-}
-ACCESS_DIGEST=${ACCESS_DIGEST:-alp} QUERY_DIGEST=${QUERY_DIGEST:-psdigest} PROFILE_DIGEST=${PROFILE_DIGEST:-pprof} RESOURCES_DIGEST=${RESOURCES_DIGEST:-proc}
+ACCESS_DIGEST=${ACCESS_DIGEST:-alp} QUERY_DIGEST=${QUERY_DIGEST:-pt} PROFILE_DIGEST=${PROFILE_DIGEST:-pprof} RESOURCES_DIGEST=${RESOURCES_DIGEST:-proc}
 
 # 失敗しても他の変換とベンチ台帳は止めない。理由は digest.err に残す
 run() { # kind tool input json raw

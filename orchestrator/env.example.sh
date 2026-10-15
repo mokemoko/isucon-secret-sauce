@@ -3,7 +3,7 @@ HOSTS="isu1 isu2 isu3"               # ~/.ssh/config の Host 名
 APP_HOST=isu1                        # 再起動確認 probe の実行先
 PPROF_HOSTS="isu1"                   # pprof を取るホスト (アプリが動く全台)。未設定なら APP_HOST
 REPO_DIR=/home/isucon/webapp         # 各サーバ上の git repo (remote 名 origin)。`make deploy` を Phase1 で用意する
-LOG_FILES="/var/log/nginx/access.log"  # ベンチ前に truncate、後に回収。QUERY_DIGEST=pt のときは slow log も足す
+LOG_FILES="/var/log/nginx/access.log /var/log/mysql/mysql-slow.log"  # ベンチ前に truncate、後に回収。QUERY_DIGEST=pt (既定) のときは slow log も入れる
 BENCH_CMD="echo TODO"                # ベンチ実行コマンド。標準出力の最終行に {"pass":bool,"score":int,...} を出すこと
 PPROF_URL=""                         # 例 "http://localhost:6060/debug/pprof/profile?seconds=60" (PPROF_HOSTS の各台の上で curl)
 PPROF_APP_RE=""                      # summary.md の cum 上位に出すアプリの関数 (jq の正規表現)。空なら ^main\. 。main 以外のパッケージにアプリがあるときに書く
@@ -14,7 +14,7 @@ BLACKBOX_PATHS=""                    # ワーカーに読ませないパス (ベ
 BENCH_WARN_RE="WARN|ERROR"           # bench.txt のうち警告・エラーとして数える行 (grep -E)。問題の出力形式に合わせて setup が直す (ベースラインでほぼ0件になること)
 BENCH_PENALTY_RE=""                  # ベンチが減点の件数を出す行 (grep -oE。当たった部分の最初の整数を件数とする。例 "[Ee]rrors?[ :=]+[0-9]+")。あれば after-bench.sh は warnings の代わりにこれの増減を見る
 ACCESS_DIGEST=alp                    # 解析アダプタ (bin/digest/<kind>-<tool>.sh)。ログ形式や DB が合わなければアダプタを足して切り替える
-QUERY_DIGEST=psdigest                # psdigest: MySQL 8.0 の performance_schema digest 集計 (既定・軽い) / pt: slow log + pt-query-digest (MariaDB、または実 SQL を全件見たいとき)
+QUERY_DIGEST=pt                      # pt: slow log + pt-query-digest (既定。プリペアドステートメントのクエリも出る) / psdigest: MySQL 8.0 の performance_schema digest 集計 (軽いが、サーバ側のプリペアドステートメントのクエリは出ない)
 DB_HOSTS="isu1"                      # MySQL が動く全ホスト (psdigest のリセット・取得先。別用途の MySQL も含め、役割を移しても外さない)。未設定なら APP_HOST
 MYSQL_CMD="sudo mysql"               # DB ホスト上で root 権限の mysql クライアントを起動するコマンド
 PROFILE_DIGEST=pprof

@@ -27,7 +27,7 @@
   - 5.7：binlog は既定で無効。`query_cache` はあるが書き込みが多いと逆効果（8.0 では削除済み）
   - 8.0.30 以降：`innodb_log_file_size` は非推奨で `innodb_redo_log_capacity`
   - MariaDB：performance_schema が既定で無効。計測は `knowledge/measurement.md`
-- 計測：digest 集計を既定にし、slow log は深掘りのときだけ（`knowledge/measurement.md`）
+- 計測：slow log + pt を既定にし、slow log の書き込みが重いときだけ digest 集計に切り替える（digest にはサーバ側のプリペアドステートメントのクエリが出ない。`knowledge/measurement.md`）
 
 ## PostgreSQL
 - `shared_buffers`（メモリの 25% 程度）、`effective_cache_size`、`work_mem`（ソート・ハッシュ結合）

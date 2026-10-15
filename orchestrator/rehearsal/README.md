@@ -55,7 +55,7 @@
    - docker：`docker compose ls -a` が空。リハーサルの時間帯に作られたイメージ・匿名ボリュームを消す（作成日時で見分ける。他のプロジェクトのものに触れない）
    - Orca：`~/orca/workspaces/<repo>/` に worktree が残っていない
 2. **評価**（`## #N の評価` として下に書く）
-   - **作業時間の割合**：Phase 1 の所要、ベンチ枠の稼働率、ベンチの内訳（変更の測定・ベースライン・再起動確認・retry）、Implementer の作業時間と待ち時間、人間待ち。律速と改善できる点
+   - **作業時間の割合**：Phase 1 の所要、ベンチ枠の稼働率（`rehearsal/bench-util.sh` で「列に待ちがあった時間での稼働率」と「列が空だった時間」に分ける。前者は Coordinator の判断・作業の速さ、後者は変更の供給）、ベンチの内訳（変更の測定・ベースライン・再起動確認・retry）、Implementer の作業時間と待ち時間、人間待ち。律速と改善できる点
    - **解法の妥当性と検討漏れ**：公式の解説・講評、上位チームの参加記と、実施した打ち手を比べる
    - **自作ベンチ（localbench）の品質**：verify の利用と見逃し、run.sh の有無と使われ方
    - 材料：`state/bench.jsonl`・`verdicts.jsonl`・`analysis/*/`・`reports/`・`docs/insights.md`、`orca orchestration task-list --run <run_id> --json`、Coordinator のセッション記録（`~/.claude/projects/<競技リポジトリのパス>/*.jsonl`）

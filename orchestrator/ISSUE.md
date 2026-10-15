@@ -15,10 +15,10 @@
 | 6 | [リハ#4] ベンチ枠の稼働率が50%（ベンチの間の空きの中央値81秒） | done |
 | 7 | [リハ#4] 整合性の WARN（減点）が増えても verify は通り、LocalBench の改善も起動しなかった | done |
 | 8 | [リハ#5] BENCH_WARN_RE の「エラー」がベンチの進捗行に含まれる固有名に当たり warnings_increased=yes を誤検知 | done |
-| 9 | [リハ#5] アプリ内の DB（SQLite）のクエリが計測されず、MySQL のクエリ集計だけが summary に出た | todo |
-| 10 | [リハ#5] Phase 3 が19分で終わり、END の26分前から何もしなかった | todo |
-| 11 | [リハ#5] ベンチ枠の稼働率が31%（中断を除いて39%）、ベンチの間の空きの中央値127秒 | todo |
-| 12 | [リハ#5] BENCH_WARN_RE が減点にならない行（打ち切り時の decode 失敗など）も数え、Coordinator が4回手で中身を確かめた | todo |
+| 9 | [リハ#5] アプリ内の DB（SQLite）のクエリが計測されず、MySQL のクエリ集計だけが summary に出た | done |
+| 10 | [リハ#5] Phase 3 が19分で終わり、END の26分前から何もしなかった | done |
+| 11 | [リハ#5] ベンチ枠の稼働率が31%（中断を除いて39%）、ベンチの間の空きの中央値127秒 | done |
+| 12 | [リハ#5] BENCH_WARN_RE が減点にならない行（打ち切り時の decode 失敗など）も数え、Coordinator が4回手で中身を確かめた | done |
 
 ---
 
@@ -73,18 +73,22 @@
 - 現象：データの大半がテナントごとの SQLite（アプリのプロセス内）にあった。setup は MySQL の slow log と pt を入れ、受け入れ条件（主要な SELECT が queries.json に出ること）は「MySQL には出ない」として通した。SQLite 側の計測は入らず、アプリには SQLite のクエリトレースを出す環境変数が用意されていたが使われなかった
 - 影響：最後まで queries.json は MySQL の INSERT だけで、pprof の `runtime.cgocall`（SQLite の呼び出し）が 53% と出るだけだった。どのクエリが重いかは Analyst がコードを読んで推した
 - 対応案：recon.md の受け入れ条件を「アプリが使う全 DB」に広げる。アプリ内の DB（SQLite など）は、アプリやドライバのトレース機能・クエリログを使うアダプタ（`bin/digest/query-<tool>.sh`）を setup が足す。knowledge/measurement.md に選択肢を書く
+- 対応：survey がホストごとに「データと処理の置き場所」（組み込み DB・ファイル・外部 API なども）と「setup 向けの注意」を書き、setup が env.md の先頭に置き場所ごとの「今の計測で見えるか」の表を作る（受け入れ条件は全行の判定）。見えない行があれば Coordinator が Phase 2 で measure-extra（recon.md）を並行で起動する。manual は参照文書の一覧（未取得は `要保存:` で人間に頼む）と、追試・変更禁止・ブラウザでの確認の節を必ず書く。knowledge/measurement.md に組み込み DB の計測を足した。ダッシュボードに state/docs の閲覧ページ（`/docs/`）を足した
 
 ## 10. Phase 3 の後に時間が余る
 - 現象：15:15 に Phase 3 に入り、実行中の3本に 15:30 までの worker_done を指示した。列はすぐ空になり、15:25 に計測の無効化、15:28〜15:30 に final の再起動確認、15:34 に終了の承認が出た。END の16:00まで26分残った
 - 影響：3時間の14%を使わなかった。8時間の本番でも、PHASE3_BEFORE=45 の大半が余る可能性がある
 - 対応案（要相談）：(a) PHASE3_BEFORE を短くする（30分など）、(b) final の後も FREEZE_BEFORE までは、再起動確認をやり直す前提で小さな変更を採ってよいことにする、(c) Phase 3 の開始時に、残り時間に収まる実行中のタスクは待つ（期限を (PHASE3_BEFORE − FREEZE_BEFORE) / 2 で切らない）
+- 対応：時間の設定は変えない（本番は余裕を持たせる）。余った時間と在庫の減った時間を使うため、Browser（`prompts/browser.md`、agent-browser）を足した。Phase 2 は在庫が減ったときにローカル環境で初期状態と比べ（Implementer の枠・ベンチ枠の外）、Phase 3 は開始直後に本番で最終チェックする（`bin/with-bench-lock.sh` でベンチと重ねない）。不具合は修正タスク、改善のヒントは Analyst に渡す
 
 ## 11. ベンチ枠の稼働率
 - 現象：ベンチ26回の稼働45分に対し、13:05〜15:30 の145分（31%）。ssh 不達の30分を除いても39%。ベンチの間の空きの中央値は127秒（#4 は81秒）。after-bench.sh を入れても縮まなかった
 - 影響：13:41〜14:52 は人間が並列度を1にしていた分の割り引きがあるが、1回ごとの空きは仕組みの問題
 - 対応案：Coordinator のセッション記録から、ベンチの終了から次のベンチの開始までの操作を分解して、何に時間を使ったかを調べる（判断・マージ・ワーカーの片付け・insights の更新など）
+- 対応：空きを分解すると、列に待ちがあったときの空きは8〜95秒（多くは20〜45秒）で、150秒を超える空きはすべて列が空のとき（Implementer の完了待ち・0点の対応・中断）だった。仕組みは変えず、`queue.sh` が列の長さを `queue.log` に残し、`rehearsal/bench-util.sh` が稼働率を「列に待ちがあった時間」と「列が空だった時間」に分けて出すようにした（評価の手順に追加）
 
 ## 12. 減点にならない警告行の誤検知
 - 現象：setup の調整後の BENCH_WARN_RE は `error` を含み、負荷走行の打ち切り時の decode 失敗（減点の集計 `Error 0` に入らない行）も数えた。warnings_increased=yes のたびに Coordinator が中身を見て「Error 0 なので問題なし」と判断した（4回）
 - 影響：1回1分程度の確認と、本当の増加を見落とす下地
 - 対応案：recon.md の BENCH_WARN_RE の調整で「ベースラインのベンチでほぼ0件になる」ことを確かめさせる。ベンチの出力に減点の集計（エラー件数）があれば、それを `warnings` の代わりに使えるよう env.sh に `BENCH_PENALTY_RE`（件数を取り出す正規表現）を足す
+- 対応：recon.md の BENCH_WARN_RE の調整に「ベースラインでほぼ0件」「打ち切りに伴う行に当たらない」を足した。`BENCH_PENALTY_RE` を足し、digest.sh が減点の件数を `penalty.txt`・summary に出し、after-bench.sh は件数があればそれの増減で `warnings_increased` を判定する

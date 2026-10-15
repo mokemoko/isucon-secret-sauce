@@ -27,6 +27,11 @@ out=$(cd "$t" && "$root/bin/after-bench.sh" b2)
 for want in 'moved=no' 'warnings_increased=no' 'pending=0 restart_check_due=no'; do
   echo "$out" | grep -qF -- "$want" || { echo "FAIL '$want':"; echo "$out"; exit 1; }
 done
+# penalty.txt があれば行数ではなく減点の件数で比べる (行数が減っても件数が増えれば yes)
+echo 3 >"$t/analysis/b1/penalty.txt"; echo 4 >"$t/analysis/b2/penalty.txt"
+out=$(cd "$t" && "$root/bin/after-bench.sh" b2)
+echo "$out" | grep -qF 'penalty=4 (前回 3' && echo "$out" | grep -qF 'warnings_increased=yes' || { echo "FAIL penalty:"; echo "$out"; exit 1; }
+rm -f "$t/analysis/b1/penalty.txt" "$t/analysis/b2/penalty.txt"
 # 前回の pass ベンチが無い・解析結果が無いときも最後まで出す
 out=$(cd "$t" && "$root/bin/after-bench.sh" b1)
 echo "$out" | grep -qF 'moved=不明' && echo "$out" | grep -qF '## マージ待ちの列' || { echo "FAIL first bench:"; echo "$out"; exit 1; }

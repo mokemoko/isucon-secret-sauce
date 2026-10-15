@@ -26,14 +26,16 @@ STATE=${STATE:-state}
 q=$STATE/merge-queue.json
 [ -f "$q" ] || echo '[]' >"$q"
 now=$(date +%s)
+# 列の長さの推移を $STATE/queue.log (epoch <TAB> 操作 <TAB> 列の長さ) に残す。ベンチ枠の稼働率を「列に待ちがあった時間」で評価するため
+qlog() { printf '%s\t%s\t%s\n' "$now" "$1" "$(jq length "$q")" >>"$STATE/queue.log"; }
 
 case ${1:-} in
   add)
-    jq --argjson e "$2" --argjson now "$now" 'map(select(.task_id != $e.task_id)) + [$e + {ready_at: $now}]' "$q" >"$q.tmp" && mv "$q.tmp" "$q" ;;
+    jq --argjson e "$2" --argjson now "$now" 'map(select(.task_id != $e.task_id)) + [$e + {ready_at: $now}]' "$q" >"$q.tmp" && mv "$q.tmp" "$q" && qlog "$1" ;;
   requeue)
-    jq --arg o "$2" --arg n "$3" --arg b "${4:-}" 'map(if .task_id == $o then .task_id = $n | (if $b != "" then .branch = $b else . end) else . end)' "$q" >"$q.tmp" && mv "$q.tmp" "$q" ;;
+    jq --arg o "$2" --arg n "$3" --arg b "${4:-}" 'map(if .task_id == $o then .task_id = $n | (if $b != "" then .branch = $b else . end) else . end)' "$q" >"$q.tmp" && mv "$q.tmp" "$q" && qlog "$1" ;;
   pop)
-    jq --arg id "$2" 'map(select(.task_id != $id))' "$q" >"$q.tmp" && mv "$q.tmp" "$q" ;;
+    jq --arg id "$2" 'map(select(.task_id != $id))' "$q" >"$q.tmp" && mv "$q.tmp" "$q" && qlog "$1" ;;
   rank)
     # 最新の pass かつ score>0 のベンチ
     id=$( { jq -r 'select(.pass and .score > 0) | .id' "$STATE/bench.jsonl" 2>/dev/null || true; } | tail -n1)

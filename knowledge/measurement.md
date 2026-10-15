@@ -56,6 +56,13 @@ orchestrator の実装（`orchestrator/bin/digest/` のアダプタ）との対�
 - アダプタを足すなら `query-pgss.collect.sh`（pre でリセット、post で `sudo -u postgres psql -At -F $'\t' -c "SELECT query, calls, total_exec_time, mean_exec_time, max_exec_time, stddev_exec_time, rows, shared_blks_hit, shared_blks_read FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 30"`）と `query-pgss.sh`（時間はミリ秒。`p95` は無いので `max` か `mean + 2*stddev` を入れて、その旨を summary に書く。`rows_examined_avg` は空）
 - PG 13 未満は列名が `total_time` / `mean_time` など（`_exec_` が無い）
 
+### アプリに組み込まれた DB（SQLite など）
+DB サーバのプロセスが無く、クエリはアプリのプロセス内で実行される。MySQL のクエリ集計にも slow log にも出ず、pprof では cgo の呼び出し（Go なら `runtime.cgocall`）や DB ドライバの関数にまとまって見えるだけになる
+- まず、アプリ・ドライバにクエリログやトレースの仕組みが用意されていないかを探す（環境変数・設定・コード中のフック）。ある場合は、出力形式に合わせてアダプタ（`query-<tool>.sh`：1行1クエリの記録を fingerprint ごとに回数・合計・平均・p95 にまとめる）を足す。全件を書くので負荷は大きい。深掘りの数回だけ有効にし、通常は止める
+- 用意されていなければ、ドライバを包むフック（Go なら `database/sql` のドライバを包んで実行時間を記録する）をアプリに入れる。これもアプリの性能を変えるので、env.sh の変数で切り替えられるようにする
+- 軽い代替：pprof の cum で、どのハンドラから DB ドライバが呼ばれているかを見る。クエリの単位では分からないが、重いハンドラは分かる
+- DB のファイルが複数に分かれている場合は、ファイルのサイズ・行数の偏りも見る（一部のファイルだけ巨大なことがある）
+
 ## アクセスログ
 - nginx：JSON 形式で `request_time` を含める。alp は `alp json`
 - nginx 以外

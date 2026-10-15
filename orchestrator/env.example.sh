@@ -11,7 +11,8 @@ PROBE_URLS=""                        # 必須。再起動確認で前後比較�
 PROBE_CURL_ARGS=""                   # 任意。PROBE の curl に足す引数 (APP_HOST のシェルで展開。cookie はサーバ側のコマンド置換で取る)
 ALP_ARGS="json --config <競技リポジトリの絶対パス>/config/alp.yml"  # 回収した access.log に対する alp 引数 (雛形は templates/alp.yml)
 BLACKBOX_PATHS=""                    # ワーカーに読ませないパス (ベンチマーカーのソース等)。空なら制限なし
-BENCH_WARN_RE="WARN|ERROR"           # bench.txt のうち警告・エラーとして数える行 (grep -E)。問題の出力形式に合わせて setup が直す
+BENCH_WARN_RE="WARN|ERROR"           # bench.txt のうち警告・エラーとして数える行 (grep -E)。問題の出力形式に合わせて setup が直す (ベースラインでほぼ0件になること)
+BENCH_PENALTY_RE=""                  # ベンチが減点の件数を出す行 (grep -oE。当たった部分の最初の整数を件数とする。例 "[Ee]rrors?[ :=]+[0-9]+")。あれば after-bench.sh は warnings の代わりにこれの増減を見る
 ACCESS_DIGEST=alp                    # 解析アダプタ (bin/digest/<kind>-<tool>.sh)。ログ形式や DB が合わなければアダプタを足して切り替える
 QUERY_DIGEST=psdigest                # psdigest: MySQL 8.0 の performance_schema digest 集計 (既定・軽い) / pt: slow log + pt-query-digest (MariaDB、または実 SQL を全件見たいとき)
 DB_HOSTS="isu1"                      # MySQL が動く全ホスト (psdigest のリセット・取得先。別用途の MySQL も含め、役割を移しても外さない)。未設定なら APP_HOST

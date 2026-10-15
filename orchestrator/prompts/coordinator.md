@@ -11,9 +11,9 @@
   - Phase 3 開始：`PHASE3_BEFORE=45`（END の何分前か）。**新しい Implementer の起動を止める時刻**であり、実装の締め切りではない。それまでは Phase 2 を通常どおり続ける（大きい仮説も起動してよい）
   - マージ停止：`FREEZE_BEFORE=15`（END の何分前か）
 - ワーカー起動の既定値：`--agent claude`
-- 同時実行数：Implementer は最大3、LocalBench は1、Analyst は1。**開始直後も含め、`worker-start` の前に必ず数える**（数えるのは worker_done を送る前の実装中のもの。列で待つものは数えない）。仮説が多くても4件目以降は枠が空くまで起動しない。律速はベンチ枠なので、増やしても列が伸びるだけで、終盤の競合が増える
+- 同時実行数：Implementer は最大3、LocalBench は1、Analyst は1、Browser は1（Browser と measure-extra は Implementer の枠に数えない）。**開始直後も含め、`worker-start` の前に必ず数える**（数えるのは worker_done を送る前の実装中のもの。列で待つものは数えない）。仮説が多くても4件目以降は枠が空くまで起動しない。律速はベンチ枠なので、増やしても列が伸びるだけで、終盤の競合が増える
 - ワーカーへの spec は `ORC=<絶対パス> STATE=<絶対パス>` で始め、`$ORC/prompts/<role>.md を読んで従うこと` と書いてから、タスク固有の指示を続ける
-- **spec に時間の制約を書かない**：締め切り（「HH:MM までに」）、件数の上限、制限時間（「N分以内に」）、「小さく確実なものだけ」のような絞り込みを書かない。ワーカーが構造的な打ち手を自分で落とし、在庫が尽きる。時間の指示は Phase 3 の手順1の `send` だけ
+- **spec に時間の制約を書かない**：締め切り（「HH:MM までに」）、件数の上限、制限時間（「N分以内に」）、「小さく確実なものだけ」のような絞り込みを書かない。ワーカーが構造的な打ち手を自分で落とし、在庫が尽きる。時間の指示は Phase 3 の手順1・2 の `send` だけ
 - **ベンチマーカーのブラックボックス化**：`$ORC/env.sh` の `BLACKBOX_PATHS` が空でなければ、すべての spec に「`<BLACKBOX_PATHS>` 配下とベンチマーカーのソースは参照禁止（common.md のブラックボックス節）」と明記する。あなた自身も読まない。レポートや仮説の根拠がベンチマーカーの内部実装に基づいていたら、その仮説は採用せず、理由を付けて破棄する
 
 ## 起動時
@@ -55,7 +55,9 @@ orca orchestration check --wait --types "worker_done,escalation,question,status"
 | local | setup | current |
 | localbench-init（prompt は localbench.md） | setup | new-top-level |
 
+- manual の worker_done に `要保存: <文書名>` があれば、`orca worktree set --worktree active --comment "<文書名> を $STATE/docs/ に保存してください"` で人間に頼む（待たずに進める）。`docs/` に置かれたものは全ワーカーが作業前に読む（common.md）
 - manual の worker_done が `STOP:` で始まる場合：ただちに `gate-create` で人間に判断を仰ぎ、解決するまで本番ベンチと自動化を止める
+- setup の完了後：`$STATE/docs/env.md` の「データと処理の置き場所」の表に「見えない」の行があれば、Phase 2 の開始と並行で recon.md の **measure-extra** タスクを1つ起動する（`--worktree new-top-level --name measure-extra --base-branch main`。spec にその行を書く）。完了を待たずに Phase 2 を進める。worker_done にアプリ・設定の変更（`branch=`）があれば、Implementer と同じくマージ待ちの列に積む（タイトルは `measure: <内容>`、batchable）
 - setup の完了後：`$ORC/bin/bench.sh origin/main baseline` を2回実行する。スコア差の割合（|a−b|/大きい方）を `$STATE/noise` に保存する。同じ sha の組がまだ無いうちの、`judge.sh` のノイズ幅の初期値になる
 - ベースラインが pass したら、人間の承認を待たずに Phase 2 へ進む（開始の承認待ちで稼働の1割以上が空いたため、ゲートは出さない）。`orca worktree set --worktree active --comment "Phase 2 開始（baseline <score>）"` で知らせる。local と localbench-init の完了は待たない
 - **ベースラインが fail（0点）の場合**：ゲート「ベースラインが0点（エラー要約: bench.txt の要点）。0点の解消から始める / その他」を出し、**回答を待たずに** Phase 2 に進んで0点の解消に着手する（回答が「その他」なら従う）。Phase 2 の最初の仕事は「0点の解消」とし、他の改善より最優先にする。Analyst に bench.txt のエラーから原因を特定させ、その Implementer タスクだけを先に流す（他の仮説の Implementer は起動してよいが、マージは0点が解消してから）
@@ -66,7 +68,7 @@ orca orchestration check --wait --types "worker_done,escalation,question,status"
 - 起動条件：本番ベンチが pass した後、次のどちらかを満たしたら起動する
   - 未着手の仮説が3件未満
   - **ボトルネックが移った**：`after-bench.sh` が `moved=yes` を出した（重みのあるエンドポイント・クエリ・CPU を最も使うプロセスのいずれかの1位が、前回の pass ベンチから入れ替わった）。既存の仮説の前提が崩れている可能性がある。このときだけ、そのベンチの `summary.md` を読む
-- spec に `bench_id` と `run_id` を渡す
+- spec に `bench_id` と `run_id` を渡す。まだ Analyst に渡していない Browser のレポート（`$STATE/reports/browser-*.md`）があれば、そのパスも渡す
 - 完了したら `$STATE/reports/analyst-<bench_id>.json` を読み、上から順に Implementer タスクとして `task-create` する。spec には仮説の `spec` に加えて `evidence` と `scoring_rationale` を「根拠」節として必ず含める（Implementer が採点上のトレードオフを判断できるように）
 - `needs_human` のものは、タスクを作ってから `gate-create` で人間の承認を待つ
 
@@ -137,15 +139,21 @@ orca worktree rm --worktree path:<worktree の絶対パス> --force --json
 - 完了したら、worker_done の要約の `branch=` を main にマージする（worktree のブランチ名は `<git user>/<name>` になり、`--name` とは一致しない）。ベンチは不要（アプリに影響しないため）
 - Implementer への通知は要らない（Implementer は検証の直前に `origin/main` を取り込むので、そこで入る。worker_done 後のワーカーには send が届かない）
 
+### Browser（在庫が減ったときだけ、`--worktree new-top-level --name browser-<n> --base-branch main`）
+実際のページの挙動を確かめる（browser.md）。本番ベンチの枠も Implementer の枠も使わないので、既存の改善の流れを止めない。優先度は常に Implementer より下
+- 起動条件（Phase 2）：Implementer の枠を埋めたうえで、未着手の仮説が2件以下か、マージ待ちの列が空のとき。前回の Browser の後に main が変わっていること。同時に1つまで。spec に `target=local` と書く
+- worker_done：レポート `$STATE/reports/browser-<task_id>.md` の `bug:` は、それぞれ Implementer タスク「fix: <内容>」にして、未着手の仮説より先に起動する（レポートの該当箇所を spec に含める）。改善のヒントは、次の Analyst の spec に渡す（上記）。その後 `worker-release` し、「worktree の後始末」と同じく worktree を消す
+
 ## Phase 3：最終（END の PHASE3_BEFORE 分前、`echo 3 > $STATE/phase`）
 **前倒しの禁止と例外**：Phase 3 は END の PHASE3_BEFORE 分前まで始めない。仮説の在庫が尽きたら、まず Analyst を起動して補充する。
 前倒しのゲートを出してよいのは、直近の Analyst が analyst.md の「毎回の点検」の4項目をすべて検討し、**時間以外の理由で**0件を返したときだけ（「時間内に終わらない」は理由にならない。その場合は時間の制約を外して Analyst をもう一度起動する）。そのときは期限付きゲート「Phase 3 を前倒ししてよいか（理由: 点検の4項目ごとに見送った理由）（10分後の HH:MM までに回答が無ければ 承認 扱い）」を出す。回答待ちの間も Analyst による補充は続け、却下されたらそのまま Phase 2 を続ける。
 
-1. 新規の Implementer の起動を止める。実行中のものには、(PHASE3_BEFORE − FREEZE_BEFORE) / 2 分以内に worker_done するよう `send` する（時間を指示してよいのはここだけ）。間に合わないものは worker-stop する。マージ待ちの列は優先度順に流し切る（残り時間で回せるベンチ数を超える分は、優先度の低いものから捨てる）
-2. Implementer タスク「計測の無効化」を投入する。内容は、アクセスログ・pprof（slow log を有効にしていればそれも）を止め、ログレベルを下げること。performance_schema は止めなくてよい。採用基準は通常どおり
-3. **列が空になり、計測の無効化の採否が出てから**（＝最後のマージの後に）`$ORC/bin/restart-check.sh final` を実行する。失敗したら、最後に restart-check が通った sha まで戻す
-4. final の再起動確認の後は、何もマージしない（マージしたら final をやり直すことになり、ベンチ枠を2回分失う）。END の FREEZE_BEFORE 分前以降も同じ。最終状態を人間に報告し、ゲート「この状態で終了してよいか」を出す
-5. 終了したら、残ったローカル環境を消す。`docker compose ls -a` に出る競技リポジトリの worktree の project を、それぞれ `docker compose -p <name> down -v --rmi local` で消す（他のプロジェクトのものには触れない）
+1. 新規の Implementer の起動を止める。実行中のものには、(PHASE3_BEFORE − FREEZE_BEFORE) / 2 分以内に worker_done するよう `send` する（時間を指示してよいのはここと手順2だけ）。間に合わないものは worker-stop する。マージ待ちの列は優先度順に流し切る（残り時間で回せるベンチ数を超える分は、優先度の低いものから捨てる）
+2. Browser を `target=prod` で1つ起動する（本番での最終チェック。browser.md）。期限は手順1と同じ（(PHASE3_BEFORE − FREEZE_BEFORE) / 2 分以内に worker_done）。`bug:` が出たら、Phase 3 でも修正の Implementer タスクを起動してよい（新規の起動を止める規則の例外。手順1と同じ期限を `send` で伝える）。改善のヒントは扱わない
+3. Implementer タスク「計測の無効化」を投入する。内容は、アクセスログ・pprof（slow log を有効にしていればそれも）を止め、ログレベルを下げること。performance_schema は止めなくてよい。採用基準は通常どおり
+4. **列が空になり、計測の無効化と Browser の修正の採否が出てから**（＝最後のマージの後に）`$ORC/bin/restart-check.sh final` を実行する。失敗したら、最後に restart-check が通った sha まで戻す
+5. final の再起動確認の後は、何もマージしない（マージしたら final をやり直すことになり、ベンチ枠を2回分失う）。END の FREEZE_BEFORE 分前以降も同じ。最終状態を人間に報告し、ゲート「この状態で終了してよいか」を出す
+6. 終了したら、残ったローカル環境を消す。`docker compose ls -a` に出る競技リポジトリの worktree の project を、それぞれ `docker compose -p <name> down -v --rmi local` で消す（他のプロジェクトのものには触れない）
 
 ## 競技中の知見 `$STATE/docs/insights.md`（あなただけが書く）
 全ワーカーが作業前に読むので、ここに書けば全員に配られる。Phase 1 の開始時に、以下の見出しで作る。

@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Docs</title>
+<style>
+/* 色トークンは index.html と揃える */
+:root {
+  --surface-0: #f4f4f2; --surface-1: #fcfcfb; --border: #e2e1dc;
+  --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #8a8984;
+  --series-1: #2a78d6; --good: #0ca30c; --warning: #fab219; --critical: #d03b3b;
+  --c1: #2a78d6; --c2: #eb6834; --c3: #1baf7a; --c4: #eda100; --c5: #e87ba4;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --surface-0: #111110; --surface-1: #1a1a19; --border: #33332f;
+    --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e86; --series-1: #3987e5;
+    --c1: #3987e5; --c2: #d95926; --c3: #199e70; --c4: #c98500; --c5: #d55181;
+  }
+}
+:root[data-theme="dark"] {
+  --surface-0: #111110; --surface-1: #1a1a19; --border: #33332f;
+  --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e86; --series-1: #3987e5;
+  --c1: #3987e5; --c2: #d95926; --c3: #199e70; --c4: #c98500; --c5: #d55181;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--surface-0); color: var(--text-primary);
+  font: 14px/1.6 system-ui, -apple-system, "Hiragino Sans", sans-serif; }
+header { display: flex; gap: 24px; align-items: baseline; padding: 12px 16px;
+  border-bottom: 1px solid var(--border); background: var(--surface-1); position: sticky; top: 0; z-index: 1; }
+header h1 { font-size: 16px; margin: 0; }
+header nav { margin-left: auto; font-size: 13px; }
+a { color: var(--series-1); }
+.wrap { display: grid; grid-template-columns: 240px 1fr; gap: 16px; padding: 16px; max-width: 1500px; }
+aside, article { background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; min-width: 0; }
+aside { align-self: start; position: sticky; top: 64px; }
+aside ul { list-style: none; margin: 0; padding: 0; }
+aside li a { display: block; padding: 4px 6px; border-radius: 4px; text-decoration: none; color: var(--text-primary); }
+aside li a.on { background: var(--series-1); color: #fff; }
+aside li small { display: block; color: var(--text-muted); font-size: 11px; }
+aside li a.on small { color: #fff; }
+.muted { color: var(--text-muted); }
+article h1 { font-size: 20px; } article h2 { font-size: 17px; border-bottom: 1px solid var(--border); padding-bottom: 4px; } article h3 { font-size: 15px; } article h4 { font-size: 14px; }
+table { border-collapse: collapse; font-size: 13px; margin: 8px 0; display: block; overflow-x: auto; }
+th, td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; vertical-align: top; }
+th { background: var(--surface-0); }
+code { background: var(--surface-0); padding: 1px 4px; border-radius: 3px; font-size: 12.5px; }
+pre { background: var(--surface-0); padding: 8px; border-radius: 4px; overflow: auto; font-size: 12px; }
+pre code { padding: 0; }
+blockquote { margin: 8px 0; padding: 4px 12px; border-left: 3px solid var(--border); color: var(--text-secondary); }
+.meta { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ドキュメント（state/docs）</h1>
+  <nav><a href="/">ダッシュボード</a></nav>
+</header>
+<div class="wrap">
+  <aside><ul id="list"><li class="muted">読み込み中…</li></ul></aside>
+  <article><div class="meta" id="meta"></div><div id="body" class="muted">左から選ぶ</div></article>
+</div>
+<script>
+// state/docs のファイルを一覧し、Markdown は簡易に整形、JSON は整形して出す。30秒ごとに一覧を読み直し、表示中のファイルが更新されていれば読み直す
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const ago = t => { const m = Math.round((Date.now() / 1000 - t) / 60); return m < 1 ? "たった今" : m < 60 ? `${m}分前` : `${Math.floor(m / 60)}時間${m % 60}分前`; };
+let files = [], shownMtime = null;
+
+function inline(s) {
+  // コード片を先に退避してから、強調・リンクを置き換える
+  const codes = [];
+  s = esc(s).replace(/`([^`]+)`/g, (_, c) => { codes.push(c); return `\u0000${codes.length - 1}\u0000`; });
+  s = s.replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+       .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+|[^)\s:]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  return s.replace(/\u0000(\d+)\u0000/g, (_, i) => `<code>${codes[i]}</code>`);
+}
+const cells = l => l.trim().replace(/^\||\|$/g, "").split("|").map(c => c.trim());
+
+function md(src) {
+  const L = src.split("\n"), out = [];
+  for (let i = 0; i < L.length;) {
+    const l = L[i];
+    if (/^```/.test(l)) {
+      const buf = []; i++;
+      while (i < L.length && !/^```/.test(L[i])) buf.push(L[i++]);
+      i++; out.push(`<pre><code>${esc(buf.join("\n"))}</code></pre>`); continue;
+    }
+    let m;
+    if ((m = l.match(/^(#{1,4})\s+(.*)/))) { out.push(`<h${m[1].length}>${inline(m[2])}</h${m[1].length}>`); i++; continue; }
+    if (/^\s*\|/.test(l) && i + 1 < L.length && /^\s*\|?\s*:?-{2,}/.test(L[i + 1])) {
+      const head = cells(l); i += 2; const rows = [];
+      while (i < L.length && /^\s*\|/.test(L[i])) rows.push(cells(L[i++]));
+      out.push(`<table><tr>${head.map(c => `<th>${inline(c)}</th>`).join("")}</tr>${rows.map(r => `<tr>${r.map(c => `<td>${inline(c)}</td>`).join("")}</tr>`).join("")}</table>`);
+      continue;
+    }
+    if (/^\s*([-*]|\d+\.)\s+/.test(l)) {
+      // 字下げでネストを表す
+      const items = [];
+      while (i < L.length && /^\s*([-*]|\d+\.)\s+/.test(L[i])) {
+        const mm = L[i].match(/^(\s*)([-*]|\d+\.)\s+(.*)/);
+        items.push({ d: Math.floor(mm[1].length / 2), ol: /\d/.test(mm[2]), t: mm[3] }); i++;
+        while (i < L.length && /^\s{2,}\S/.test(L[i]) && !/^\s*([-*]|\d+\.)\s+/.test(L[i])) items[items.length - 1].t += " " + L[i++].trim();
+      }
+      let html = "", stack = [];
+      for (const it of items) {
+        while (stack.length > it.d + 1) html += `</li></${stack.pop()}>`;
+        if (stack.length === it.d + 1 && stack[it.d] !== (it.ol ? "ol" : "ul")) html += `</li></${stack.pop()}>`;   // 同じ深さで番号付きと箇条書きが切り替わったら別のリストにする
+        else if (stack.length === it.d + 1) html += "</li>";
+        while (stack.length < it.d + 1) { const tag = it.ol ? "ol" : "ul"; stack.push(tag); html += `<${tag}>`; }
+        html += `<li>${inline(it.t)}`;
+      }
+      while (stack.length) html += `</li></${stack.pop()}>`;
+      out.push(html); continue;
+    }
+    if (/^>\s?/.test(l)) {
+      const buf = [];
+      while (i < L.length && /^>\s?/.test(L[i])) buf.push(L[i++].replace(/^>\s?/, ""));
+      out.push(`<blockquote>${md(buf.join("\n"))}</blockquote>`); continue;
+    }
+    if (/^---+\s*$/.test(l)) { out.push("<hr>"); i++; continue; }
+    if (!l.trim()) { i++; continue; }
+    const buf = [];
+    while (i < L.length && L[i].trim() && !/^(#{1,4}\s|```|>|\s*\||\s*([-*]|\d+\.)\s+)/.test(L[i])) buf.push(L[i++]);
+    if (!buf.length) buf.push(L[i++]);
+    out.push(`<p>${buf.map(inline).join("<br>")}</p>`);
+  }
+  return out.join("\n");
+}
+
+function renderList() {
+  const cur = decodeURIComponent(location.hash.slice(1));
+  $("list").innerHTML = files.length ? files.map(f =>
+    `<li><a href="#${encodeURIComponent(f.name)}" class="${f.name === cur ? "on" : ""}">${esc(f.name)}<small>${ago(f.mtime)} · ${(f.size / 1024).toFixed(1)}KB</small></a></li>`).join("")
+    : '<li class="muted">まだありません</li>';
+}
+
+async function show(force) {
+  const name = decodeURIComponent(location.hash.slice(1)) || (files[0] && files[0].name);
+  if (!name) return;
+  const f = files.find(x => x.name === name);
+  if (!force && f && shownMtime === `${name}@${f.mtime}`) return;
+  const r = await fetch(`/state/docs/${encodeURIComponent(name)}`, { cache: "no-store" });
+  const t = r.ok ? await r.text() : `(取得できません: ${r.status})`;
+  let html;
+  if (/\.json$/.test(name)) { try { html = `<pre>${esc(JSON.stringify(JSON.parse(t), null, 2))}</pre>`; } catch { html = `<pre>${esc(t)}</pre>`; } }
+  else if (/\.md$/.test(name)) html = md(t);
+  else html = `<pre>${esc(t)}</pre>`;
+  $("body").className = ""; $("body").innerHTML = html;
+  $("meta").innerHTML = `${esc(name)}${f ? ` · 更新 ${ago(f.mtime)}` : ""} · <a href="/state/docs/${encodeURIComponent(name)}" target="_blank">元のテキスト</a>`;
+  shownMtime = f ? `${name}@${f.mtime}` : null;
+}
+
+async function refresh() {
+  try { files = await (await fetch("/api/docs", { cache: "no-store" })).json(); } catch { files = []; }
+  renderList(); show(false);
+}
+addEventListener("hashchange", () => { renderList(); show(true); });
+refresh(); setInterval(refresh, 30000);
+</script>
+</body>
+</html>

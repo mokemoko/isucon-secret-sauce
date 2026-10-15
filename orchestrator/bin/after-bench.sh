@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # usage: bin/after-bench.sh <bench_id>   ベンチの後に Coordinator がまとめて確かめることを1回で出す。競技リポジトリの中で実行する (列の競合を git で見るため)
 #   1. 採否の判定 (bin/judge.sh。verdicts.jsonl に残る)
-#   2. 警告・エラー: analysis/<id>/warnings.txt の行数を、前回の pass ベンチと比べる (warnings_increased=yes なら LocalBench の改善を起動する)
+#   2. 警告・エラー: analysis/<id>/penalty.txt (ベンチが出す減点の件数。env.sh の BENCH_PENALTY_RE) があればその値を、無ければ warnings.txt の行数を、
+#      前回の pass ベンチと比べる (warnings_increased=yes なら LocalBench の改善を起動する)
 #   3. ボトルネックの移動: 前回の pass ベンチと、重みのあるエンドポイント (重みが無ければ全体)・クエリ・CPU を最も使うプロセスの
 #      それぞれ1位を比べる (moved=yes なら summary.md を読み、insights を書き換え、Analyst の起動を考える)
 #   4. 再起動確認の要否: $STATE/restart-pending.tsv (task_id <TAB> マージコミット <TAB> 採用時刻 epoch) が3件以上か、最古が45分以上前
@@ -24,12 +25,16 @@ echo; echo "## 前回の pass ベンチ: ${prev:-なし}"
 
 echo; echo "## warnings"
 wc_of() { [ -f "$a/$1/warnings.txt" ] && wc -l <"$a/$1/warnings.txt" | tr -d ' '; }
-cur_w=$(wc_of "$id"); prev_w=$( [ -n "$prev" ] && wc_of "$prev")
+pen_of() { [ -f "$a/$1/penalty.txt" ] && tr -dc '0-9' <"$a/$1/penalty.txt"; }
+kind=warnings; cur_w=$(pen_of "$id")
+if [ -n "$cur_w" ]; then kind=penalty; prev_w=$( [ -n "$prev" ] && pen_of "$prev")
+else cur_w=$(wc_of "$id"); prev_w=$( [ -n "$prev" ] && wc_of "$prev"); fi
 if [ -z "$cur_w" ]; then echo "warnings=不明 (warnings.txt が無い)"
 else
   inc=no; [ -n "$prev_w" ] && [ "$cur_w" -gt "$prev_w" ] && inc=yes
-  echo "warnings=$cur_w (前回 ${prev_w:-不明}) warnings_increased=$inc"
-  [ "$inc" = yes ] && head -n3 "$a/$id/warnings.txt" | cut -c1-200
+  [ "$kind" = penalty ] && echo "penalty=$cur_w (前回 ${prev_w:-不明}。ベンチが出す減点の件数) warnings_increased=$inc" \
+    || echo "warnings=$cur_w (前回 ${prev_w:-不明}) warnings_increased=$inc"
+  [ "$inc" = yes ] && head -n3 "$a/$id/warnings.txt" 2>/dev/null | cut -c1-200
 fi
 
 # 各ベンチの1位: エンドポイント (method uri)・クエリ (fingerprint の先頭)・プロセス (host:comm)

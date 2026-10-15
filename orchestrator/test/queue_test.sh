@@ -73,4 +73,7 @@ echo '{"id":"b4","pass":true,"score":30}' >>"$t/bench.jsonl"; $q rank >/dev/null
 # ベンチが無いときも落ちない
 rm "$t/bench.jsonl"; $q rank >/dev/null
 [ "$(jq -r '.queue | length' "$t/queue-rank.json")" = 3 ] || { echo "FAIL no bench"; exit 1; }
+# add・pop・requeue は queue.log に (時刻, 操作, 列の長さ) を残す。rank は残さない
+n=$(wc -l <"$t/queue.log" | tr -d ' '); $q pop nonexistent; $q rank >/dev/null
+[ "$(wc -l <"$t/queue.log" | tr -d ' ')" = $((n + 1)) ] && tail -n1 "$t/queue.log" | grep -qE '^[0-9]+	pop	3$' || { echo "FAIL queue.log"; tail -3 "$t/queue.log"; exit 1; }
 echo ok

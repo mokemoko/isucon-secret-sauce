@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -25,6 +26,9 @@ var indexHTML []byte
 
 //go:embed bench.html
 var benchHTML []byte
+
+//go:embed docs.html
+var docsHTML []byte
 
 var (
 	addr     = flag.String("addr", "127.0.0.1:9180", "listen address (localhost か Tailscale IP のみ。8080 等は競技アプリと衝突しやすいので避ける)")
@@ -103,6 +107,25 @@ func handleState(w http.ResponseWriter, r *http.Request) {
 	res["errors"] = errs
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(res)
+}
+
+// handleDocs は state/docs 直下のファイル (サブディレクトリは除く) を更新の新しい順に返す。中身は /state/docs/ から直接読ませる
+func handleDocs(w http.ResponseWriter, r *http.Request) {
+	type doc struct {
+		Name  string `json:"name"`
+		Size  int64  `json:"size"`
+		Mtime int64  `json:"mtime"`
+	}
+	docs := []doc{}
+	ents, _ := os.ReadDir(filepath.Join(*stateDir, "docs"))
+	for _, e := range ents {
+		if info, err := e.Info(); err == nil && info.Mode().IsRegular() && !strings.HasPrefix(e.Name(), ".") {
+			docs = append(docs, doc{e.Name(), info.Size(), info.ModTime().Unix()})
+		}
+	}
+	sort.Slice(docs, func(i, j int) bool { return docs[i].Mtime > docs[j].Mtime })
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(docs)
 }
 
 var benchID = regexp.MustCompile(`^[0-9]{6}-[0-9a-f]{7}$`)
@@ -187,6 +210,11 @@ func main() {
 	})
 	http.HandleFunc("/api/state", handleState)
 	http.HandleFunc("/api/bench", handleBench)
+	http.HandleFunc("/api/docs", handleDocs)
+	http.HandleFunc("/docs/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(docsHTML)
+	})
 	http.HandleFunc("/bench/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write(benchHTML)

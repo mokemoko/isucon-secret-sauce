@@ -5,7 +5,7 @@ ISUCON 以外の題材に流用するときにも効く内容に限る。ISUCON 
 
 ## Orca
 - **escalation は Dispatch の外から送れない**。人間（ダッシュボード）からの示唆は `orchestration send --to run:<id> --type status --priority high --subject "[human] ..."` で送り、Coordinator が `check --types` に status を含めて拾う
-- **gate-resolve は呼び出し元の Run に束縛される**。外部プロセス（ダッシュボード）からは解決できないので、回答を `[human-gate] <gate_id>` の status メッセージで送り、Coordinator 自身に gate-resolve させる。ダッシュボードは解決されるまで「送信済み・反映待ち」と表示する
+- **gate-resolve は呼び出し元の Run に束縛される**。外部プロセス（ダッシュボード）からは解決できないので、回答を `[human-gate] <gate_id>` の status メッセージで送り、Coordinator 自身に gate-resolve させる。ダッシュボードは解決されるまで「送信済み・反映待ち」と表示する。その間も pending のまま見えるので、複数人で見ているときの2人目の回答はダッシュボードのサーバが断る
 - 期限付きゲート：質問文に「HH:MM までに回答が無ければ <既定> 扱い」と書き、期限中は `check --wait --timeout-ms` を 60000 に縮め、期限切れで Coordinator が既定の選択肢で解決する
 - **worker-release で解放されるのはターミナルだけ**。worktree と、その中で起動した docker は残る。結論が出たタスクは `docker compose -p <project> down -v` と `orca worktree rm --force` で消す（放置すると Mac のメモリと CPU を食い、他のワーカーのローカル計測を乱す）。user_takeover になったものは retained で残る
 - **ワーカーが動いているタスクには gate-create できない**（`task_not_startable`）。ワーカーを起動しない判断用のタスクを作ってそこに付ける

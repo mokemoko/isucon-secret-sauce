@@ -79,6 +79,7 @@
 - その行の負荷が本番ベンチの解析（`analysis/<id>/`）に出るようにする。手段の例
   - アプリやドライバが持つクエリログ・トレースの設定を有効にし、回収とアダプタ（`$ORC/bin/digest/<kind>-<tool>.sh` と、回収が要るなら `.collect.sh`）を足す。共通スキーマは `$ORC/bin/digest.sh` の冒頭。アダプタは `$ORC/test/` にテストを足す（`$ORC` の変更はこのタスクに限り可）
   - それが重すぎるなら、pprof の関数・ミドルウェアの統計など軽い代替で、どの処理が重いかを見分けられるようにする
+  - 既存の仕組みを先に使う：DB 以外のミドルウェアの統計は `EXTRA_COLLECT`（ベンチ前後に `.collect.sh` を呼ぶ。`$ORC/env.example.sh`）、アプリが呼ぶ外部コマンドの時間は `extcmd.log`（`bin/digest/extcmd-jsonl.sh` の形式）。使い方は `knowledge/measurement.md` の「HTTP・DB 以外の処理」
 - 計測のための設定はアプリの性能を変えうる。負荷の大きい手段（全件のトレース）は、既定で止めておき env.sh の変数で有効にできる形にし、`$STATE/docs/env.md` に使い方と負荷を書く
 - アプリ・設定の変更は競技リポジトリのブランチに push し、worker_done の要約に `branch=<branch>` を書く（Coordinator がマージ待ちの列に積み、本番ベンチで測る）。`$ORC` の変更は isucon-secret-sauce 側に直接置く
 - 終わったら、表の「見えるか」を更新する

@@ -34,7 +34,16 @@ collect() {
   [ -x "$c" ] || return 0
   for h in ${DB_HOSTS:-$APP_HOST}; do "$c" "$1" "$h" "$dir/$h" 2>>"$dir/collect.err" || echo "collect $1 $h 失敗" >>"$dir/collect.err"; done
 }
-collect pre
+# 追加の計測 (env.sh の EXTRA_COLLECT。bin/digest/<名前>.collect.sh を EXTRA_COLLECT_HOSTS (既定 APP_HOST) でベンチ前後に呼ぶ。例 dns-pdns)
+extra() {
+  local k h
+  for k in ${EXTRA_COLLECT:-}; do
+    for h in ${EXTRA_COLLECT_HOSTS:-$APP_HOST}; do
+      "bin/digest/$k.collect.sh" "$1" "$h" "$dir/$h" 2>>"$dir/collect.err" || echo "collect $k $1 $h 失敗" >>"$dir/collect.err"
+    done
+  done
+}
+collect pre; extra pre
 
 # ベンチ中のリソース推移 (各ホストで1秒ごとに /proc を読む)。ベンチ後に ssh を kill して止める
 sampler_pids=
@@ -58,7 +67,7 @@ else
   result='{"pass":false,"score":0,"error":"bench command failed"}'
 fi
 for p in $pprof_pids; do wait "$p" || true; done
-collect post
+collect post; extra post
 if [ -n "$sampler_pids" ]; then
   for h in $HOSTS; do ssh "$h" "f=/tmp/isu-sampler-$id.pid; [ -f \$f ] && kill \$(cat \$f)" 2>/dev/null || true; done
   for p in $sampler_pids; do kill "$p" 2>/dev/null || true; wait "$p" 2>/dev/null || true; done

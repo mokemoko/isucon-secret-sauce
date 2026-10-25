@@ -78,4 +78,24 @@ SKIP_DEPLOY=1 "$root/bin/bench.sh" HEAD >/dev/null
 id=$(tail -n1 "$STATE/bench.jsonl" | jq -r .id)
 [ "$(jq -r '.[0] | "\(.fingerprint) \(.count) \(.sum)"' "$STATE/analysis/$id/h2/queries.json")" = "SELECT ? 3 3" ] || { echo "FAIL psdigest flow"; exit 1; }
 
+# 6) EXTRA_COLLECT: dns-pdns.collect.sh がベンチ前後に統計 API を取り、dns.json が差分になる。アプリの extcmd.log は LOG_FILES で回収されて extcmd.json になる
+cat >"$t/bin/curl" <<EOF
+#!/usr/bin/env bash
+n=100; [ -f "$t/bench.ran" ] && n=160
+echo "[{\"name\":\"udp-queries\",\"type\":\"StatisticItem\",\"value\":\"\$n\"},{\"name\":\"uptime\",\"type\":\"StatisticItem\",\"value\":\"\$n\"},{\"name\":\"latency\",\"type\":\"StatisticItem\",\"value\":\"50\"}]"
+EOF
+chmod +x "$t/bin/curl"; rm -f "$t/bench.ran"
+echo '{"cmd":"old","sec":9}' >"$t/extcmd.log"
+printf '#!/bin/sh
+touch %s
+echo %s >>%s
+echo %s
+' "$t/bench.ran" "'{\"cmd\":\"dnsctl add\",\"sec\":0.25}'" "$t/extcmd.log" "'{\"pass\":true,\"score\":1}'" >"$t/bin/fakebench3"; chmod +x "$t/bin/fakebench3"
+sed -i '' "s|^HOSTS=.*|HOSTS=\"h1\"; APP_HOST=h1; REPO_DIR=$t/app; LOG_FILES=\"$t/access.log $t/extcmd.log\"|; s|^BENCH_CMD=.*|BENCH_CMD=fakebench3; EXTRA_COLLECT=dns-pdns; PDNS_API_KEY=k|" "$t/env.sh"
+SKIP_DEPLOY=1 "$root/bin/bench.sh" HEAD >/dev/null
+id=$(tail -n1 "$STATE/bench.jsonl" | jq -r .id)
+[ "$(jq -c '{sec, q: .queries.udp, l: .latency_us.all}' "$STATE/analysis/$id/h1/dns.json")" = '{"sec":60,"q":60,"l":50}' ] || { echo "FAIL dns flow"; exit 1; }
+[ "$(jq -c 'map([.cmd, .count])' "$STATE/analysis/$id/h1/extcmd.json")" = '[["dnsctl add",1]]' ] || { echo "FAIL extcmd flow"; exit 1; }
+grep -q '^queries=60 (udp 60 tcp null、1/s)' "$STATE/analysis/$id/summary.md" && grep -q '^## extcmd h1' "$STATE/analysis/$id/summary.md" || { echo "FAIL dns/extcmd summary"; cat "$STATE/analysis/$id/summary.md"; exit 1; }
+
 echo "ok"

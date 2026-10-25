@@ -103,7 +103,7 @@ a { color: var(--series-1); }
   </div>
   <div class="col">
     <section>
-      <h2>人間の判断待ち</h2>
+      <h2 style="display:flex;align-items:center;gap:8px">人間の判断待ち <button id="bell" class="secondary" style="margin-left:auto;font-size:12px;padding:2px 8px;font-weight:400"></button></h2>
       <div id="gates"></div>
     </section>
     <section>
@@ -136,6 +136,7 @@ const pct = n => n == null || isNaN(n) ? "-" : (n > 0 ? "+" : "") + n.toFixed(1)
 let state = null;
 
 try { $("who").value = localStorage.getItem("who") || ""; } catch {}
+$("who").onchange = () => { try { localStorage.setItem("who", $("who").value.trim()); } catch {} }; // 判断待ちの回答にも名前を付けるため
 
 // 各ベンチに「直前の pass ベンチ比の実績改善率」を付ける
 function enrich(rows) {
@@ -236,23 +237,75 @@ function renderTasks(tasks) {
 }
 $("tasks").onclick = e => { const b = e.target.closest("button[data-status]"); if (b) { showAll[b.dataset.status] = !showAll[b.dataset.status]; renderTasks(state.tasks); } };
 
-const answered = {}; // gate id → 送った回答。Coordinator が gate-resolve するまで pending のまま見えるため
 const drafts = {};   // gate id → 自由回答の書きかけ。描き直しで消さないため
 let gatesKey = null; // 前回描いたゲートの内容。3秒ごとの更新で変わっていなければ描き直さない (入力中の文字・IME の変換を消さない)
-function renderGates(gates) {
-  const key = JSON.stringify([(gates || []).map(g => [g.id, g.question, g.options, g.task_id]), answered]);
+// answers はサーバが持つ「送信済みの回答」(gate id → {who, resolution})。Coordinator が gate-resolve するまで pending のまま見えるため、
+// 誰がどう答えたかを全員の画面に出す。2人目の回答はサーバが断る
+function renderGates(gates, answers) {
+  answers = answers || {};
+  const key = JSON.stringify([(gates || []).map(g => [g.id, g.question, g.options, g.task_id, answers[g.id]])]);
   if (key === gatesKey) return;
   gatesKey = key;
   if (!gates || !gates.length) { $("gates").innerHTML = '<span class="muted">なし</span>'; return; }
   const open = document.activeElement?.closest?.(".gate")?.dataset.id;
   $("gates").innerHTML = gates.map(g => {
     let opts = []; try { opts = JSON.parse(g.options || "[]"); } catch {}
+    const a = answers[g.id];
     return `<div class="gate" data-id="${esc(g.id)}"><div>${esc(g.question)}</div><div class="muted">${esc(g.task_id)}</div>
-      ${answered[g.id] ? `<div class="muted">「${esc(answered[g.id])}」を送信済み・Coordinator の反映待ち</div>` : `<div class="opts">${opts.map(o => `<button data-res="${esc(o)}">${esc(o)}</button>`).join("")}
+      ${a ? `<div class="muted">${esc(a.who || "（名前なし）")} が「${esc(a.resolution)}」を送信済み・Coordinator の反映待ち</div>` : `<div class="opts">${opts.map(o => `<button data-res="${esc(o)}">${esc(o)}</button>`).join("")}
       <input placeholder="自由回答 (Enter)" data-free value="${esc(drafts[g.id] || "")}"></div>`}</div>`;
   }).join("");
   if (open) $("gates").querySelector(`.gate[data-id="${CSS.escape(open)}"] input`)?.focus();
 }
+
+// 新しい判断待ちが出たら知らせる: 音 (Web Audio。ページを1回操作するまでブラウザが鳴らさない)、タブのタイトル、
+// HTTPS か localhost なら OS の通知 (別のタブ・ウィンドウを見ているときだけ)
+const seenGates = new Set();
+let firstGates = true, audio = null;
+let bellOn = (() => { try { return localStorage.getItem("bell") !== "off"; } catch { return true; } })();
+const canNotify = "Notification" in window && window.isSecureContext;
+function unlockAudio() {
+  if (!bellOn) return;
+  audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+  if (audio.state === "suspended") audio.resume().then(renderBell);
+  renderBell();
+}
+function renderBell() {
+  const ready = audio && audio.state === "running";
+  $("bell").textContent = !bellOn ? "🔕 通知音オフ" : ready ? "🔔 通知音オン" : "🔔 通知音オン（ページを1回クリックすると鳴ります）";
+}
+function chime() {
+  if (!bellOn || !audio || audio.state !== "running") return;
+  [0, 0.25].forEach((dt, i) => {
+    const t = audio.currentTime + dt, o = audio.createOscillator(), g = audio.createGain();
+    o.frequency.value = i ? 1320 : 880;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.3, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+    o.connect(g).connect(audio.destination); o.start(t); o.stop(t + 0.4);
+  });
+}
+function notifyGates(gates, answers) {
+  gates = gates || []; answers = answers || {};
+  const fresh = gates.filter(g => !seenGates.has(g.id));
+  fresh.forEach(g => seenGates.add(g.id));
+  if (fresh.length && !firstGates) {
+    chime();
+    if (bellOn && canNotify && document.hidden && Notification.permission === "granted")
+      fresh.forEach(g => new Notification("判断待ち: " + (g.task_id || ""), { body: g.question, tag: g.id }));
+  }
+  firstGates = false;
+  const n = gates.filter(g => !answers[g.id]).length;
+  document.title = n ? `(${n}) 判断待ち - ISUCON Control` : "ISUCON Control";
+}
+$("bell").onclick = e => {
+  e.stopPropagation();
+  bellOn = !bellOn;
+  try { localStorage.setItem("bell", bellOn ? "on" : "off"); } catch {}
+  if (bellOn) { unlockAudio(); chime(); if (canNotify && Notification.permission === "default") Notification.requestPermission(); }
+  renderBell();
+};
+document.addEventListener("click", unlockAudio);
+document.addEventListener("keydown", unlockAudio);
+renderBell();
 
 function renderQueue(r) {
   if (!r || !r.queue?.length) { $("queue").innerHTML = '<tr><td class="muted">なし</td></tr>'; return; }
@@ -282,7 +335,7 @@ async function tick() {
   $("best").textContent = passed.length ? fmt(Math.max(...passed.map(r => r.score))) : "-";
   $("nbench").textContent = rows.length;
   $("errors").textContent = (state.errors || []).join(" / ");
-  renderChart(rows); renderBench(rows); renderGates(state.gates);
+  renderChart(rows); renderBench(rows); renderGates(state.gates, state.answers); notifyGates(state.gates, state.answers);
   fetch("/state/verdicts.jsonl").then(r => r.ok ? r.text() : "").catch(() => "").then(t => {
     verdicts = Object.fromEntries(t.split("\n").filter(Boolean).flatMap(l => { try { const v = JSON.parse(l); return [[v.id, v]]; } catch { return []; } }));
     renderBench(rows);
@@ -316,7 +369,8 @@ $("hint").onsubmit = async e => {
 };
 
 async function resolveGate(id, resolution) {
-  try { await postJSON("/api/gate", { id, resolution }); answered[id] = resolution; tick(); } catch (err) { alert(err.message); }
+  try { await postJSON("/api/gate", { id, resolution, who: $("who").value.trim() }); } catch (err) { alert(err.message); }
+  tick();
 }
 $("gates").onclick = e => { const b = e.target.closest("button[data-res]"); if (b) resolveGate(b.closest(".gate").dataset.id, b.dataset.res); };
 $("gates").oninput = e => { if (e.target.dataset.free !== undefined) drafts[e.target.closest(".gate").dataset.id] = e.target.value; };

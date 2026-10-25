@@ -18,6 +18,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -105,8 +106,11 @@ func handleState(w http.ResponseWriter, r *http.Request) {
 		res[key] = m[key]
 	}
 	res["errors"] = errs
+	gateMu.Lock()
+	res["answers"] = gateAnswers
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(res)
+	gateMu.Unlock()
 }
 
 // handleDocs は state/docs 直下のファイル (サブディレクトリは除く) を更新の新しい順に返す。中身は /state/docs/ から直接読ませる
@@ -172,7 +176,8 @@ func handleBench(w http.ResponseWriter, r *http.Request) {
 }
 
 // post は JSON 限定にして、他サイトからのフォーム POST (CSRF) を CORS プリフライトで弾く
-func post(fn func(body map[string]string) ([]string, error)) http.HandlerFunc {
+// fn が返す done は送信の結果 (nil = 成功) を受け取る。予約を取り消すために使う
+func post(fn func(body map[string]string) (args []string, done func(error), err error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.Header.Get("Content-Type") != "application/json" {
 			http.Error(w, "POST application/json only", http.StatusBadRequest)
@@ -183,17 +188,45 @@ func post(fn func(body map[string]string) ([]string, error)) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		args, err := fn(body)
+		args, done, err := fn(body)
 		if err == nil {
 			_, err = orca(args...)
+			if done != nil {
+				done(err)
+			}
 		}
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadGateway)
+			code := http.StatusBadGateway
+			if _, ok := err.(errBad); ok {
+				code = http.StatusBadRequest
+			}
+			if _, ok := err.(errConflict); ok {
+				code = http.StatusConflict
+			}
+			http.Error(w, err.Error(), code)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
+
+// gateAnswer はダッシュボードから送ったゲートの回答。Coordinator が gate-resolve するまでゲートは pending のまま見えるので、
+// 複数人で見ていても2人目が別の回答を送らないよう、サーバで1件目だけを受け付けて全員の画面に出す。
+// メモリだけに持つ (再起動で消えるが、その頃には Coordinator が解決している)
+type gateAnswer struct {
+	Who        string `json:"who"`
+	Resolution string `json:"resolution"`
+	At         int64  `json:"at"`
+}
+
+var (
+	gateMu      sync.Mutex
+	gateAnswers = map[string]gateAnswer{}
+)
+
+type errConflict string
+
+func (e errConflict) Error() string { return string(e) }
 
 func main() {
 	flag.Parse()
@@ -221,22 +254,44 @@ func main() {
 	})
 	// 人間の示唆は status/high として Coordinator の Run inbox に入れる。escalation は Dispatch 外から送れないため。
 	// Coordinator は check --wait --types に status を含めること
-	http.HandleFunc("/api/hint", post(func(b map[string]string) ([]string, error) {
+	http.HandleFunc("/api/hint", post(func(b map[string]string) ([]string, func(error), error) {
 		text := strings.TrimSpace(b["text"])
 		if text == "" {
-			return nil, errBad("text が必要です")
+			return nil, nil, errBad("text が必要です")
 		}
 		return []string{"orchestration", "send", "--to", "run:" + *runID, "--type", "status", "--priority", "high",
-			"--subject", "[human] " + b["who"], "--body", text}, nil
+			"--subject", "[human] " + b["who"], "--body", text}, nil, nil
 	}))
 	// gate-resolve は呼び出し元の Run に束縛されていて外部プロセスからは実行できないため、
 	// 回答をメッセージで送り、Coordinator 自身に gate-resolve させる
-	http.HandleFunc("/api/gate", post(func(b map[string]string) ([]string, error) {
-		if b["id"] == "" || b["resolution"] == "" {
-			return nil, errBad("id と resolution が必要です")
+	http.HandleFunc("/api/gate", post(func(b map[string]string) ([]string, func(error), error) {
+		id := b["id"]
+		if id == "" || b["resolution"] == "" {
+			return nil, nil, errBad("id と resolution が必要です")
+		}
+		// 先に予約して送る。同時に来た2件目は予約を見て断る。送信に失敗したら予約を消してやり直せるようにする
+		gateMu.Lock()
+		a, ok := gateAnswers[id]
+		if !ok {
+			gateAnswers[id] = gateAnswer{strings.TrimSpace(b["who"]), b["resolution"], time.Now().Unix()}
+		}
+		gateMu.Unlock()
+		if ok {
+			who := a.Who
+			if who == "" {
+				who = "（名前なし）"
+			}
+			return nil, nil, errConflict("回答済みです: " + who + "「" + a.Resolution + "」")
+		}
+		undo := func(err error) {
+			if err != nil {
+				gateMu.Lock()
+				delete(gateAnswers, id)
+				gateMu.Unlock()
+			}
 		}
 		return []string{"orchestration", "send", "--to", "run:" + *runID, "--type", "status", "--priority", "high",
-			"--subject", "[human-gate] " + b["id"], "--body", b["resolution"]}, nil
+			"--subject", "[human-gate] " + id, "--body", b["resolution"]}, undo, nil
 	}))
 	http.Handle("/state/", http.StripPrefix("/state/", http.FileServer(http.Dir(*stateDir))))
 	log.Printf("dashboard on http://%s (run=%q state=%s)", *addr, *runID, *stateDir)

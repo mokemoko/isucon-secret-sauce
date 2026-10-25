@@ -5,7 +5,7 @@ ISUCON 以外の題材に流用するときにも効く内容に限る。ISUCON 
 
 ## Orca
 - **escalation は Dispatch の外から送れない**。人間（ダッシュボード）からの示唆は `orchestration send --to run:<id> --type status --priority high --subject "[human] ..."` で送り、Coordinator が `check --types` に status を含めて拾う
-- **gate-resolve は呼び出し元の Run に束縛される**。外部プロセス（ダッシュボード）からは解決できないので、回答を `[human-gate] <gate_id>` の status メッセージで送り、Coordinator 自身に gate-resolve させる。ダッシュボードは解決されるまで「送信済み・反映待ち」と表示する
+- **gate-resolve は呼び出し元の Run に束縛される**。外部プロセス（ダッシュボード）からは解決できないので、回答を `[human-gate] <gate_id>` の status メッセージで送り、Coordinator 自身に gate-resolve させる。ダッシュボードは解決されるまで「送信済み・反映待ち」と表示する。その間も pending のまま見えるので、複数人で見ているときの2人目の回答はダッシュボードのサーバが断る
 - 期限付きゲート：質問文に「HH:MM までに回答が無ければ <既定> 扱い」と書き、期限中は `check --wait --timeout-ms` を 60000 に縮め、期限切れで Coordinator が既定の選択肢で解決する
 - **worker-release で解放されるのはターミナルだけ**。worktree と、その中で起動した docker は残る。結論が出たタスクは `docker compose -p <project> down -v` と `orca worktree rm --force` で消す（放置すると Mac のメモリと CPU を食い、他のワーカーのローカル計測を乱す）。user_takeover になったものは retained で残る
 - **ワーカーが動いているタスクには gate-create できない**（`task_not_startable`）。ワーカーを起動しない判断用のタスクを作ってそこに付ける
@@ -40,6 +40,7 @@ ISUCON 以外の題材に流用するときにも効く内容に限る。ISUCON 
 - テストは偽の ssh（ホスト名を捨ててローカル実行）で通しの流れを確認する。2台を同じローカル repo に見立てると並列 deploy の git lock が衝突するので、そのケースは deploy を飛ばす
 
 ## 道具の落とし穴
+- bash：実行中のスクリプトはファイルを読み進めながら実行する。ベンチ中に `bin/bench.sh` をその場で書き換える（エディタ・`open(p,"w")`・`cat >`）と、BENCH_CMD の後の行がずれて台帳の追記が抜けた。`bin/` の差し替えは別ファイルに書いて `mv` する（実行中の bash は古い inode を読み続ける）
 - jq：正規表現に制御文字の範囲を書くときは jq の文字列エスケープ1段（`"[\u0001-\u001f]"`）。`\\u` にすると意図しない範囲になり英字が消えた。数値はリテラルの表記（`25.0`）を保つので、比較は `. + 0` でそろえる
 - Go：`GOROOT` が別の Go（mise など）を指していると `go tool pprof` や `go run` が壊れる。`env -u GOROOT go ...`
 - Chrome 拡張（Claude in Chrome）が使えない・ブロックされるときは、ヘッドレス Chrome の `--screenshot` で表示を確認できる（クリック操作はできない）

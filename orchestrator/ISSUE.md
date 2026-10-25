@@ -7,69 +7,40 @@
 
 | # | 課題 | 状態 |
 |---|---|---|
-| 13 | [リハ#6] ワーカー（appmap）が Claude の API エラー（応答の途中切断）でターンを終え、worker_done を送らないまま dispatched で止まった | done |
-| 14 | [リハ#6] ダッシュボードの判断待ちの自由回答が、入力中に3秒ごとに消える | done |
-| 15 | [リハ#6] クエリの計測の既定が performance_schema の digest 集計だが、プリペアドステートメントのクエリは digest に出ず、毎回 slow log に切り替えている | done |
-| 16 | [リハ#6] queue.sh rank で20分待ちの `*` が付いた優先度 0.04 の項目が、0点の主因（優先度 1.14）より上の順位・次の batch になった | done |
-| 17 | [リハ#6] ベースラインから0点が続く間、0点解消タスクのベンチのたびに人間のゲートで止まる（原因が段階的に解けるときも毎回止まる） | done |
-| 18 | [リハ#6] PROBE_URLS のユーザがベンチで作られたもので、DB の移設後に再起動確認が止まった | done |
-| 19 | [リハ#6] Analyst が `needs_human` で出した「アプリの複数台化」に Coordinator がゲートを作らず、未着手のまま終わった（isu3・isu4 が最後まで遊休） | done |
-| 20 | [リハ#6] Phase 2 で Browser が起動されず（列が空の時間があった）、Phase 3 の本番の確認に初期状態の記録が無かった | done |
-| 21 | [リハ#6] アプリの env ファイル（DB の接続先・パスワード入り）を setup が auto モードの判定でリポジトリに入れられず、DB の移設に人間の手作業が要るとされた | done |
+| 22 | [リハ#7] measure-extra が実行中の bench.sh をその場で書き換え、ベースラインの1回が bench.jsonl に載らなかった | todo |
+| 23 | [リハ#7] queue.sh requeue 直後（リベースの worker_done 前）の項目が rank の .batch の先頭に出る | todo |
+| 24 | [リハ#7] with-bench-lock.sh を STATE が相対パスの状態で使うと bench.lock が残る（Browser prod が報告） | todo |
+| 25 | [リハ#7] ベンチ1回176秒のうち約100秒が計測の待ち（pprof の seconds が負荷走行より長い、slow log の回収と pt の解析をロック中に行う） | todo |
+| 26 | [リハ#7] Coordinator が `needs_human` のゲートに期限（既定は却下）を付け、expected_gain=high を含む3件が20分で自動却下された | todo |
+| 27 | [リハ#7] タスクのタイトルの `[要承認]` が二重になる（Analyst の title に既に付いている） | todo |
 
 ---
 
-## 13. API エラーでワーカーが worker_done を送らずに止まる
-- 現象：appmap が起動から約1分後に `API Error: The response stopped arriving` でターンを終えた。Orca 上は dispatched・live のままで、activity だけが done。人間が UI で failed 表示に気づいて判明した（Coordinator の check には何も来ない）
-- 影響：約20分、appmap が進まなかった。30分の点検（dispatched のまま30分）より前に気づく手段が無い
-- 回避策：`orca terminal send --terminal <handle> --text "...再開..." --enter` で再開させた。点検で `worker-show` の `projection.stage.activity=done` かつ dispatched のものを拾うと早く気づける
-- 対応案：メインループの「終わらないタスクの点検」を、30分を待たずタイムアウトのたびに行い、`worker-show` で `activity=done` かつ dispatched のワーカーに「worker_done を送るか作業を再開する」よう `orca terminal send` する
-- 対応：`bin/stalled-workers.sh` を足した（activity=done の dispatched を初めて見た時刻を残し、STALL_MIN 分（既定5）続いたものを出す）。Coordinator はタイムアウトのたびに実行し、出たワーカーに `orca terminal send` で再開か worker_done を促す。KNOWLEDGE.md に追記
+## 22. bench.sh が台帳に追記せず終了（measure-extra の書き換え）
+- 現象: `bench.sh origin/main baseline`（142911-40cd518）の出力が deploy の行で終わり、analysis/ と summary.md はできたが bench.jsonl に行が無い。プロセスは残っていない
+- 影響: judge・ダッシュボードにベンチが出ない
+- 原因: measure-extra が実行中の bench.sh をその場で編集した。bash はスクリプトを逐次読むため後半の処理がずれた
+- 回避: bench.txt の最終行から同じ形式で手動追記した。measure-extra には $ORC/bin の差し替えを mv（別 inode）で行うよう依頼。recon.md の measure-extra 節に同じ注意を書くべき
 
-## 14. 判断待ちの自由回答が消える
-- 現象：ダッシュボードは3秒ごとに判断待ちの一覧を描き直していた。フォーカスは戻すが入力欄の中身は戻さないため、自由回答を書いている途中で消える（日本語の変換中も切れる）
-- 影響：ゲートに選択肢以外の回答を送れない
-- 対応：ゲートの内容（id・質問・選択肢・送信済みの回答）が変わったときだけ描き直す。書きかけは gate id ごとに保持して描き直しでも戻す。変換中の Enter では送信しない。偽の orca でゲートを1件出し、入力から10秒後も残ることを確かめた
+## 23. リベース中の項目が .batch に出る
+- 現象: `queue.sh requeue` で付け替えた項目が、リベースタスクの worker_done 前から rank の先頭・.batch に出る（競合フラグも古いブランチで判定）
+- 影響: .batch に従うとワーカーの worker_done 前のブランチをマージしてしまう（禁止事項）
+- 回避: リベース中の項目は飛ばし、次の項目を単独で流した。requeue に「worker_done 待ち」の状態を持たせ、rank で除外すべき
 
-## 15. digest 集計にプリペアドステートメントのクエリが出ない
-- 現象：リハーサル #3〜#6 のすべてで、setup が psdigest では主要な SELECT が見えないとして slow log + pt に切り替えた
-- 事実確認（2026-10-15、手元の docker、MySQL 8.0.34 と 8.4.11、go-sql-driver/mysql v1.7.1）：`interpolateParams=false`（サーバ側のプリペアドステートメント）で SELECT・UPDATE を各50回流すと、`events_statements_summary_by_digest` には1件も出ず、`events_statements_summary_global_by_event_name` の `statement/com/Prepare`・`statement/com/Execute` の回数にだけ現れた。`db.Prepare` で明示的に準備した文（30回）も同じ。`interpolateParams=true`（テキストプロトコル）にすると digest に出た。`prepared_statements_instances` は Close 済みの文が消えるため、ベンチ後の集計には使えない
-- 影響：アプリが既定のドライバ設定（多くの言語・ORM はサーバ側のプリペアドステートメント）なら、digest 集計では主要なクエリが見えない。setup が毎回切り替えの手間を払い、気づかなければ計測の死角になる
-- 対応案：計測の既定を slow log（`long_query_time=0`）+ pt-query-digest にし、ベンチ中の slow log の書き込みがボトルネックになった（`resources.json` で mysqld の I/O・CPU が目立つ、slow log の量が大きい）ときと、アプリがテキストプロトコルで動くようになった（`interpolateParams` の導入後など）ときだけ digest に切り替える。recon.md の setup 手順・受け入れ条件、`env.example.sh` の `QUERY_DIGEST` の既定、`knowledge/measurement.md` の「既定」を入れ替える。Phase 3 の計測の無効化に slow log を止める手順は既にある。リハーサル中はプロンプトを変えないため、終了後に入れる
-- 対応：既定を slow log + pt に入れ替えた（recon.md の setup、`env.example.sh` の `QUERY_DIGEST=pt`・`LOG_FILES`、`bin/bench.sh`・`bin/digest.sh` の既定値、`templates/mysqld.cnf`、`knowledge/measurement.md`・`middleware.md`）。digest への切り替えは、slow log の書き込みが重いときか、アプリがテキストプロトコルで実行するようになったときだけ
+## 24. with-bench-lock.sh の相対パス
+- 現象: Browser（target=prod）が STATE を相対パスで with-bench-lock.sh を使い、bench.lock が残った（本人が手で解除）
+- 影響: 次の bench.sh が mkdir ロックで永久待ちになる
+- 回避: STATE を絶対パスで渡す。スクリプト側で STATE を絶対パスに正規化すべき
 
-## 16. 待ち時間の優先が0点の解消を追い越す
-- 現象：ベースラインが0点の間、20分以上待った（`*`）優先度 0.04 の項目が、0点の主因を直す優先度 1.14 の項目より上に並び、次の batch になった（Coordinator が気づいて止めた）
-- 影響：0点の間に効果の小さい変更を測ることになる
-- 対応案：queue.sh rank の AGE_MIN の繰り上げを、タイトルが `[0点解消]` の項目より上には上げない（または最新の pass ベンチが score 0 の間は繰り上げを止める）
-- 対応：queue.sh rank は、ベースラインから0点が続く間（pass かつ score>0 がまだ無い）、`[0点解消]` を先頭に並べ、待ち時間の繰り上げをしない。Coordinator は0点の解消タスクのタイトルに `[0点解消]` を付ける
+## 25. ベンチ枠の約6割が計測の待ち
+- 現象：ベンチ1回の平均176秒のうち、負荷走行は約70秒。pprof の `seconds=110`（setup が設定）を待つのに約40秒、slow log（1回で数百 MB）の回収と pt-query-digest に50〜94秒かかり、その間ずっとベンチのロックを持つ。計測を止めた後は74秒
+- 影響：41回のベンチで約70分が計測の待ち。同じ時間で倍近いベンチを回せた
+- 補足：measurement.md の「`interpolateParams=true` を入れたら digest に切り替える」は、14:46 に入った後も使われなかった
 
-## 17. 0点の解消のたびにゲートで止まる
-- 現象：coordinator.md の「ベースラインから0点が続いている間は、0点の解消タスクのベンチが0点のままでも同じくゲートで判断を仰ぐ」に従い、1本目の0点解消（デッドロック）の後も0点のままでゲートになった。原因は2段（デッドロック → history の全走査）で、2本目の後に解消した
-- 影響：0点の間は1本ごとに人間の回答を待つ。ベースラインからの立ち上げが遅れる
-- 対応案：ベースラインから0点が続く間は、0点解消のベンチが0点のままでもゲートを出さず、減点の内訳（bench.txt のエラーの種類）が減っていれば次の0点解消を流す。エラーの種類が増えた・変わらないときだけゲート
-- 対応：ベースラインから0点が続く間は、`[0点解消]` のベンチが0点のままでも、減点の件数（`penalty=`、無ければ `warnings=`）が前回より減っていればゲートを出さずに次の `[0点解消]` を流す。減っていない・増えたときだけゲート
+## 26. needs_human のゲートが期限切れで自動却下
+- 現象：Coordinator が `needs_human` の仮説3件のゲートに「17:00 までに回答が無ければ却下」の期限を付け、20分で自動却下した。期限付きゲートは Phase 3 の前倒しにだけ使う規定だが、`needs_human` のゲートに期限を付けてはいけないとは書いていない
+- 影響：expected_gain=high の「HTTPS の終端を isu3 に分ける」（最後の律速は isu1 の nginx）と、水責めへの対処が未着手で終わった
 
-## 18. PROBE_URLS のユーザがベンチで作られたものだった
-- 現象：DB を isu2 に分離した後、restart-check.sh が「再起動前の時点で PROBE_URLS に失敗する URL がある」で止まった。/admin/user/1230 は、id_generator が 0 から採番されていた頃にベンチが isu1 の DB に作ったユーザで、isu2 には無い
-- 回避策：初期データの最小 ID のユーザ（2626206）に差し替えた。probe は初期データにある ID を選ぶこと
-- 対応案：recon.md の PROBE_URLS の選び方に「初期データ（初期化で戻るデータ）にある ID を使う。ベンチが作ったデータは初期化や DB の移設で消える」を足す
-- 対応：recon.md の PROBE_URLS に「初期データ（`/initialize` で戻るデータ）にある ID を使い、`/initialize` の直後にも通ることを確かめる」を足した
-
-## 19. needs_human の仮説にゲートが作られない
-- 現象：Analyst（174505）が「[restart] アプリを複数台に分散する（isu1 の nginx から isu1・isu3・isu4 の Go に振り分け）」を `needs_human=true` で出した。Coordinator はタスクを作ったが、ゲートを作らず、最後に failed で閉じた。DB の分離・縦分割にはゲートを作っていた
-- 影響：isu3・isu4 は最後まで遊休。公式の講評では5台を App 1・DB 4 に使うのが良い配分だった
-- 対応案：coordinator.md の Analyst の完了時の手順で、`needs_human` のものはタスク作成と同じ手順の中でゲートを作ることを明示し、タイムアウトのたびに「ゲートの無い needs_human のタスク」が無いかを点検する（task-list と gate-list の突き合わせ）
-- 対応：needs_human のタスクはタイトルに `[要承認]` を付け、同じ手順でゲートを作る。after-bench.sh に「承認待ちの仮説」を足し、ゲートの無い `[要承認]`（ゲート未作成）と、回答済みで未着手のもの（回答済み・未着手）をベンチのたびに出す
-
-## 20. Phase 2 で Browser が起動されない
-- 現象：22:55〜23:12 に列が空だったが、Browser（target=local）は起動されなかった。Phase 3 の Browser（target=prod）は `$STATE/browser/initial/` が無く、初期の API 応答の記録と比べた
-- 影響：初期状態の画面の記録が無いので、挙動の違いを画面で比べられない
-- 対応案：初期状態の記録を、在庫が減るのを待たずに Phase 2 の最初の空き（Implementer の枠の外）で取る（Browser の初回は記録だけ）。起動条件の点検をメインループのタイムアウトの点検に入れる
-- 対応：local の完了後に Browser を `mode=record`（初期状態の記録だけ）で在庫に関係なく1回起動する。起動条件の点検をタイムアウトの点検に入れた
-
-## 21. 認証情報を含む env ファイルをリポジトリに入れられない
-- 現象：アプリの EnvironmentFile（DB の接続先・パスワード）を、setup が auto モードの判定（認証情報の持ち出し）でリポジトリに入れられず、「書き換えは人間の手作業」とした。DB の分離の Implementer は、systemd の drop-in（`EnvironmentFile=` を後から読ませて `ISUCON_DB_HOST` だけ上書き）をリポジトリに入れて回避した
-- 影響：構成の変更のたびに人間の作業が要るように見え、ゲートが増える（#3 でも同じ種類の問題）
-- 対応案：recon.md の setup に「認証情報を含むファイルを入れられないときは、原本はサーバに残し、変える値だけを上書きするファイル（systemd の drop-in、`conf.d/`、別の env ファイル）をリポジトリに入れて deploy する」を書く。knowledge にも同じパターンを足す
-- 対応：recon.md の setup に「原本はサーバに残し、変える値だけを上書きするファイル（systemd の drop-in、`conf.d/`）をリポジトリに入れて deploy する」を書いた。knowledge/middleware.md にも同じパターンを足した
+## 27. `[要承認]` の二重付与
+- 現象：Analyst が title に `[要承認] ` を付けて返し、Coordinator も付けた
+- 影響：表示だけ（ダッシュボード・after-bench の照合は動いた）

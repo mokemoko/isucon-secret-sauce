@@ -71,6 +71,19 @@ got=$(jq -c 'map(.weight)' "$t/st/analysis/b1/h1/endpoints.json")
 [ "$got" = '[1,null,0.5,null]' ] || { echo "FAIL weights: $got"; exit 1; }
 grep -q '加点あり (weight>0) の時間比率 60%' "$t/st/analysis/b1/summary.md" || { echo "FAIL weighted share"; cat "$t/st/analysis/b1/summary.md"; exit 1; }
 
+# dns-pdns: カウンタは前後の差分、latency は post の値。pre より uptime が小さければ再起動とみなし post の累積を使う
+st() { printf '[{"name":"udp-queries","type":"StatisticItem","value":"%s"},{"name":"tcp-queries","type":"StatisticItem","value":"0"},{"name":"backend-queries","type":"StatisticItem","value":"%s"},{"name":"user-msec","type":"StatisticItem","value":"%s"},{"name":"uptime","type":"StatisticItem","value":"%s"},{"name":"latency","type":"StatisticItem","value":"%s"},{"name":"response-by-qtype","type":"MapStatisticItem","value":[]}]' "$@"; }
+mkdir -p "$t/dns"; st 100 400 1000 50 9 >"$t/dns/dns-pdns.pre.json"; st 1100 4400 3500 150 777 >"$t/dns/dns-pdns.post.json"
+got=$("$root/bin/digest/dns-pdns.sh" "$t/dns/dns-pdns.post.json" "$t/dns/raw.json" | jq -c '{sec, restarted, q: .queries, b: .backend_queries, u: .cpu_sec.user, l: .latency_us.all, nx: .rcode.nxdomain}')
+[ "$got" = '{"sec":100,"restarted":false,"q":{"udp":1000,"tcp":0},"b":4000,"u":2.5,"l":777,"nx":null}' ] || { echo "FAIL dns-pdns: $got"; exit 1; }
+st 100 400 1000 10 9 >"$t/dns/dns-pdns.post.json"; st 5000 1 1 900 1 >"$t/dns/dns-pdns.pre.json"
+[ "$("$root/bin/digest/dns-pdns.sh" "$t/dns/dns-pdns.post.json" "$t/dns/raw.json" | jq -c '[.restarted, .sec, .queries.udp]')" = '[true,10,100]' ] || { echo "FAIL dns-pdns restart"; exit 1; }
+
+# extcmd-jsonl: cmd ごとの集計。JSON でない行・cmd の無い行は捨てる
+printf '%s\n' '{"cmd":"a","sec":0.1,"err":false}' '{"cmd":"a","sec":0.3,"err":true}' 'not json' '{"x":1}' '{"cmd":"b","sec":1}' >"$t/ext.log"
+got=$("$root/bin/digest/extcmd-jsonl.sh" "$t/ext.log" "$t/ext.txt" | jq -c 'map([.cmd, .count, .errors, (.sum * 10 | round), .p95, .max])')
+[ "$got" = '[["b",1,0,10,1,1],["a",2,1,4,0.3,0.3]]' ] || { echo "FAIL extcmd: $got"; exit 1; }
+
 command -v pt-query-digest >/dev/null || { echo "ok (pt-query-digest なしのため query-pt は skip)"; exit 0; }
 # query-pt: fingerprint の英字が残り、制御文字と長さが抑えられること
 cols=$(seq -f 'column_%g' 1 100 | paste -sd, -)   # fingerprint 自体が 500 文字を超えるクエリ

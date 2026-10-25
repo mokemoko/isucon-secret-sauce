@@ -18,5 +18,7 @@ QUERY_DIGEST=pt                      # pt: slow log + pt-query-digest (既定。
 DB_HOSTS="isu1"                      # MySQL が動く全ホスト (psdigest のリセット・取得先。別用途の MySQL も含め、役割を移しても外さない)。未設定なら APP_HOST
 MYSQL_CMD="sudo mysql"               # DB ホスト上で root 権限の mysql クライアントを起動するコマンド
 PROFILE_DIGEST=pprof
+EXTRA_COLLECT=""                     # 追加の計測 (空白区切り)。bin/digest/<名前>.collect.sh をベンチ前後に EXTRA_COLLECT_HOSTS の各台で呼ぶ。例 dns-pdns: PowerDNS の統計 API の差分 → <host>/dns.json (PDNS_API_KEY が必須、PDNS_API_URL)
+EXTRA_COLLECT_HOSTS=""               # 未設定なら APP_HOST
 RESOURCES_DIGEST=proc                # bin/sample-resources.sh の出力を変換する
 RESOURCE_SAMPLING=1                  # 0 でベンチ中のリソース取得を止める

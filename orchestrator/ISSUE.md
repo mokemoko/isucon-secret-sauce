@@ -13,6 +13,10 @@
 | 25 | [リハ#7] ベンチ1回176秒のうち約100秒が計測の待ち（pprof の seconds が負荷走行より長い、slow log の回収と pt の解析をロック中に行う） | todo |
 | 26 | [リハ#7] Coordinator が `needs_human` のゲートに期限（既定は却下）を付け、expected_gain=high を含む3件が20分で自動却下された | todo |
 | 27 | [リハ#7] タスクのタイトルの `[要承認]` が二重になる（Analyst の title に既に付いている） | todo |
+| 28 | [リハ#8] deploy.sh の git fetch が GitHub ssh 認証で断続的に Permission denied (publickey) になり deploy failed、本番が半分だけ新しい版になる | doing |
+| 29 | [リハ#8] bench.sh が deploy failed で終わっても after-bench.sh は bench.jsonl の最終行（前回のベンチ）を処理してしまう | todo |
+| 30 | [リハ#8] ダッシュボードのベンチ履歴で、retry のベンチにも「再起動」の印が付く（retry も SKIP_DEPLOY=1 で走り、restart_check=true で記録される） | todo |
+| 31 | [リハ#8] after-bench.sh の「列を通らない変更」が、Coordinator のマージ（件名が一定しない）も検知していた | done |
 
 ---
 
@@ -45,3 +49,22 @@
 ## 27. `[要承認]` の二重付与
 - 現象：Analyst が title に `[要承認] ` を付けて返し、Coordinator も付けた
 - 影響：表示だけ（ダッシュボード・after-bench の照合は動いた）
+
+## 28. deploy.sh の fetch が GitHub ssh 認証で断続的に失敗
+- 現象: 23:20 ごろ、DB 分離（3a0dce6）の deploy で3台とも `git@github.com: Permission denied (publickey)`。同じ鍵の `ssh -T git@github.com` を連続で試すと、成功（deploy key として / エージェント転送の個人鍵として）と拒否が混ざる。deploy key は GitHub に登録済みで、サーバの id_ed25519 と一致している
+- 影響: isu1 だけが新しい版に checkout され（mariadb を disable 済み）、isu2/isu3 は古い版のまま。DB の向き先がずれて、本番が壊れた状態になった
+- 回避策: bench.sh を再実行して deploy をやり直す。deploy.sh で fetch をリトライするのが望ましい
+
+## 29. deploy failed の後に after-bench.sh が前回のベンチを処理する
+- 現象: bench.sh が deploy failed で終わり、bench.jsonl に行が足されないまま、`after-bench.sh $(tail -1 bench.jsonl)` が前回のベンチ（231619）の判定と列の表示をやり直した（verdicts.jsonl への重複追記は無かった）
+- 回避策: bench.sh の終了コードを確かめてから after-bench.sh を呼ぶ
+
+## 30. retry のベンチに「再起動」の印
+- 現象: `SKIP_DEPLOY=1 bench.sh HEAD "retry ..."` も `restart_check:true` で台帳に載り、ダッシュボードで再起動確認と区別できない
+- 影響: 表示だけ（judge は同じ sha の組としてノイズ幅に使うので、扱いは正しい）
+- 対応案: bench.sh に `KIND=retry|restart` を渡して台帳に残し、ダッシュボードは restart だけに印を付ける
+
+## 31. 列を通らない変更の誤検知
+- 現象: Coordinator のマージの件名は `Merge PR#3 ...`・`Merge local-env` のように一定せず、git の既定の `Merge remote-tracking branch` を前提にした判定ではすべて検知された
+- 対応: 件名が `Merge `・`Revert ` で始まるものを列のものとみなし、直接 push（マージでも revert でもないコミット）と GitHub でのマージ（`Merge pull request #`）だけを出す。最初のベンチの後処理の前に直した
+

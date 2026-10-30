@@ -44,7 +44,7 @@ orca orchestration check --wait --types "worker_done,escalation,question,status"
   - **止まったワーカーの点検**：`$ORC/bin/stalled-workers.sh` を実行する。出た行（`<分> <handle> <task_id> <dispatch_id>`）は、worker_done を送らずにターンを終えたワーカー（API エラーで応答が途切れた等。check には何も届かない）。`orca terminal send --terminal <handle> --text "作業が途中で止まっています。続けてください。終わっているなら worker_done を送ってください" --enter` で促す
   - **Browser の起動条件の点検**：下の Browser 節の起動条件（初期状態の記録・在庫が減ったとき）を満たしていれば起動する
   - **終わらないタスクの点検**：`task-list --run <run_id> --brief --json` で dispatched のまま30分以上たつタスクがあれば、`worker-read` でそのワーカーの画面を見る。成果物ができて止まっていれば worker_done を送るよう `send` し、エラーや入力待ちで止まっていれば内容に応じて reply・再起動する（成果物は書かれたのに worker_done が届かないことがある）
-- **期限付きゲート**：質問文の末尾に「（HH:MM までに回答が無ければ <既定の選択肢> 扱い）」と書いて作るゲート。作った時刻と期限を覚えておき、期限付きゲートが未解決の間は `check --wait` の `--timeout-ms` を 60000 に縮める。期限を過ぎても未解決なら、あなたが `gate-resolve --resolution "<既定の選択肢>（期限切れの自動判断）"` を実行し、その旨を人間に `orca worktree set --worktree active --comment` で示す
+- **期限付きゲート**：質問文の末尾に「（HH:MM までに回答が無ければ <既定の選択肢> 扱い）」と書いて作るゲート。作った時刻と期限を覚えておき、期限付きゲートが未解決の間は `check --wait` の `--timeout-ms` を 60000 に縮める。期限を過ぎても未解決なら、あなたが `gate-resolve --resolution "<既定の選択肢>（期限切れの自動判断）"` を実行し、その旨を人間に `orca worktree set --worktree active --comment` で示す。期限付きゲートは Phase 3 の前倒し（下記）にだけ使い、`needs_human` の仮説・0点・終了確認などほかのゲートには期限を付けない（人間が見ていない間に自動で却下され、大きな打ち手を失う）
 - 空き枠を常に埋める。Implementer の枠が空いていて仮説の在庫が無ければ、Analyst を起動する
 
 ## Phase 1：調査・準備（`echo 1 > $STATE/phase`）
@@ -75,7 +75,7 @@ orca orchestration check --wait --types "worker_done,escalation,question,status"
   - **ボトルネックが移った**：`after-bench.sh` が `moved=yes` を出した（重みのあるエンドポイント・クエリ・CPU を最も使うプロセスのいずれかの1位が、前回の pass ベンチから入れ替わった）。既存の仮説の前提が崩れている可能性がある。このときだけ、そのベンチの `summary.md` を読む
 - spec に `bench_id` と `run_id` を渡す。まだ Analyst に渡していない Browser のレポート（`$STATE/reports/browser-*.md`）があれば、そのパスも渡す
 - 完了したら `$STATE/reports/analyst-<bench_id>.json` を読み、上から順に Implementer タスクとして `task-create` する。spec には仮説の `spec` に加えて `evidence` と `scoring_rationale` を「根拠」節として必ず含める（Implementer が採点上のトレードオフを判断できるように）
-- `needs_human` のものは、タイトルの先頭に `[要承認] ` を付けてタスクを作り、**同じ手順の中で**そのタスクに `gate-create` する（質問文にもその task_id を書く）。承認されたら起動し、却下されたら `task-update --status failed` で閉じる。`after-bench.sh` の「承認待ちの仮説」に「ゲート未作成」「回答済み・未着手」が出たら、その場で直す
+- `needs_human` のものは、タイトルの先頭に `[要承認] ` を付けてタスクを作り（仮説の title が既に `[要承認]` で始まっていれば付け足さない）、**同じ手順の中で**そのタスクに `gate-create` する（質問文にもその task_id を書く）。承認されたら起動し、却下されたら `task-update --status failed` で閉じる。`after-bench.sh` の「承認待ちの仮説」に「ゲート未作成」「回答済み・未着手」が出たら、その場で直す
 
 ### Implementer（`--worktree new-top-level --name impl-<短い名前> --base-branch main`）
 - 仮説の spec をそのまま渡す。担当範囲（area）が実行中の他タスクと重なるものは、重なりが解消されるまで待たせる。`team.sh sync` の「人が作業中」と範囲が重なるもの（同じエンドポイント・テーブル・設定ファイル）も起動しない（人の Issue が閉じたら起動する）。人の作業と重なって大きな仮説が止まっているときは、`orca worktree set --worktree active --comment` で知らせる
@@ -91,7 +91,7 @@ orca orchestration check --wait --types "worker_done,escalation,question,status"
   3. 各 task_id について `git merge --no-ff origin/<列の branch>`。競合したら `git merge --abort` して、下の「リベースの頼み方」で依頼する。残りのマージは続ける。1件もマージできなければ列の次に進む
   4. `git push origin main`
   5. `TASK=<task_id をカンマ区切り> $ORC/bin/bench.sh origin/main "<title を ' + ' で連結>"`
-  6. 競技リポジトリの中で `$ORC/bin/after-bench.sh <bench_id>` を実行し、出力に従う（下記の「ベンチの後」）。まとめて適用したものは**まとめて**採否を決める
+  6. 競技リポジトリの中で `$ORC/bin/after-bench.sh <bench_id>` を実行し、出力に従う（下記の「ベンチの後」）。bench.sh が 0 以外で終わったら（`deploy failed` など。台帳に行が足されない）after-bench.sh は呼ばず、出力の原因を直してから手順5をやり直す。`deploy failed (make deploy: <host>)` は台ごとに版がずれているので、直すまで次のマージをしないまとめて適用したものは**まとめて**採否を決める
 - **人の PR**（`task_id` が `pr-<番号>`。`team.sh sync` が列に積む）：手順は同じ（`git merge --no-ff origin/<branch>`、`TASK=pr-<番号>`）。ワーカーがいないので release・worktree の後始末・`team.sh close` は無い。判定は `after-bench.sh` が PR にコメントする。main と競合したら `after-bench.sh` が作者に頼むので、**ワーカーにリベースを頼まず、PR のブランチにも触らない**。列に残し、作者が push すれば次の rank で競合が消える
 - **列のリベースを先回りで頼む**：`queue.sh rank`（`after-bench.sh` の中でも実行される）は、列の各ブランチを `origin/main` と `git merge-tree` で比べ、競合するものを「main と競合 (リベースを頼む)」の行と `!` で示し、`.batch` から外す。出たものは、その場で下の「リベースの頼み方」で依頼する。revert を push した後も `git fetch origin && $ORC/bin/queue.sh rank` で確かめる。終盤に競合がまとめて見つかると、リベースの時間が無く見送ることになる
 - **リベースの頼み方**：worker_done を送ったワーカーの Dispatch は完了扱いになり、`send --to dispatch:<id>` は `dispatch_inactive` で届かない。同じターミナル（同じ worktree）に、新しいタスクとして渡す

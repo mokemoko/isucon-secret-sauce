@@ -20,6 +20,12 @@ STATE=${STATE:-state}; ORCA=${ORCA:-orca}
 id=${1:?usage: after-bench.sh <bench_id>}
 a=$STATE/analysis
 
+# 判定済みのベンチなら先に知らせる (bench.sh が deploy failed などで台帳に足さずに終わり、最終行の前回のベンチが渡されることがある)
+if [ -s "$STATE/verdicts.jsonl" ] && jq -e --arg id "$id" 'select(.id == $id)' "$STATE/verdicts.jsonl" >/dev/null 2>&1; then
+  echo "WARN $id は判定済み。直前の bench.sh が失敗して台帳に載らなかったなら、この出力は前回のベンチのもの (bench.sh の出力を確かめ、直してからやり直す)"
+  echo
+fi
+
 echo "## judge"
 jout=$(bin/judge.sh "$id") || jout="ERR judge.sh が失敗"
 echo "$jout"

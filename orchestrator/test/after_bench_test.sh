@@ -69,4 +69,5 @@ done
 ! echo "$out" | grep -q "Merge task_1" && grep -q '^pr comment 5 --body ベンチ g2' "$t/gh.log" || { echo "FAIL pr/bypass:"; echo "$out"; cat "$t/gh.log"; exit 1; }
 out=$(cd "$t/w" && STATE=$s2 GH_REPO=o/r ENV_FILE=/nonexistent PATH="$t/gbin:$PATH" "$root/bin/after-bench.sh" g2)
 echo "$out" | grep -qF 'main と競合 (通知済み): pr-5' || { echo "FAIL notified once:"; echo "$out"; exit 1; }
+echo "$out" | grep -q '^WARN g2 は判定済み' || { echo "FAIL judged warn:"; echo "$out"; exit 1; }
 echo ok

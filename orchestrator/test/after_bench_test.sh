@@ -58,7 +58,7 @@ git init -q --bare "$t/o.git"; git clone -q "$t/o.git" "$t/w" 2>/dev/null; g che
 echo a >"$t/w/f"; g add f; g commit -qm init; g push -q origin main; c0=$(g rev-parse HEAD)
 g checkout -q -b alice/x; echo x >"$t/w/f"; g commit -qam x; g push -q origin alice/x
 g checkout -q -b impl/1 main; echo g >"$t/w/g"; g add g; g commit -qm impl; g push -q origin impl/1
-g checkout -q main; g merge -q --no-ff -m "Merge remote-tracking branch 'origin/impl/1'" origin/impl/1
+g checkout -q main; g merge -q --no-ff -m "Merge task_1 impl" origin/impl/1
 echo y >"$t/w/f"; g commit -qam "直接の変更"; g push -q origin main; c2=$(g rev-parse HEAD)
 printf '%s\n' "{\"id\":\"g1\",\"sha\":\"$c0\",\"pass\":true,\"score\":100}" "{\"id\":\"g2\",\"sha\":\"$c2\",\"pass\":true,\"score\":110,\"task\":\"pr-5\"}" >"$s2/bench.jsonl"
 echo '[{"task_id":"pr-5","pr":5,"branch":"alice/x","title":"PR#5 x","ready_at":1}]' >"$s2/merge-queue.json"
@@ -66,7 +66,7 @@ out=$(cd "$t/w" && STATE=$s2 GH_REPO=o/r ENV_FILE=/nonexistent PATH="$t/gbin:$PA
 for want in '判定をコメント: pr-5 adopt' 'main と競合を通知: pr-5' "$(git -C "$t/w" rev-parse --short "$c2") u: 直接の変更"; do
   echo "$out" | grep -qF -- "$want" || { echo "FAIL '$want':"; echo "$out"; exit 1; }
 done
-! echo "$out" | grep -q "Merge remote-tracking" && grep -q '^pr comment 5 --body ベンチ g2' "$t/gh.log" || { echo "FAIL pr/bypass:"; echo "$out"; cat "$t/gh.log"; exit 1; }
+! echo "$out" | grep -q "Merge task_1" && grep -q '^pr comment 5 --body ベンチ g2' "$t/gh.log" || { echo "FAIL pr/bypass:"; echo "$out"; cat "$t/gh.log"; exit 1; }
 out=$(cd "$t/w" && STATE=$s2 GH_REPO=o/r ENV_FILE=/nonexistent PATH="$t/gbin:$PATH" "$root/bin/after-bench.sh" g2)
 echo "$out" | grep -qF 'main と競合 (通知済み): pr-5' || { echo "FAIL notified once:"; echo "$out"; exit 1; }
 echo ok

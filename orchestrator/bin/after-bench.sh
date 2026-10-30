@@ -109,15 +109,16 @@ for t in $(jq -r '.conflicts[]? | select(startswith("pr-"))' "$STATE/queue-rank.
 done
 [ "$n_pr" = 0 ] && echo "なし"
 
-# 8. main への列を通らない変更: 直前のベンチの sha からこのベンチの sha までの first-parent のうち、Coordinator のマージ
-#    (Merge remote-tracking branch 'origin/...'、その cherry-pick) と revert 以外。人が main に直接 push したもの・GitHub でマージしたもの
+# 8. main への列を通らない変更: 直前のベンチの sha からこのベンチの sha までの first-parent のうち、マージでも revert でもないコミット
+#    (人が main に直接 push したもの) と、GitHub の画面でマージしたもの (Merge pull request #...)。Coordinator のマージは
+#    メッセージが一定しない (Merge <task_id> <title> など) ので、マージコミットか、その cherry-pick (件名が Merge で始まる) を列のものとみなす
 echo; echo "## main への列を通らない変更"
 psha=$(jq -rs --arg id "$id" '(map(.id) | index($id)) as $i | if $i == null or $i == 0 then empty else .[$i - 1].sha // empty end' "$STATE/bench.jsonl" 2>/dev/null)
 if [ -z "$psha" ] || [ -z "$sha" ] || ! git -C "$caller" cat-file -e "$psha^{commit}" 2>/dev/null || ! git -C "$caller" cat-file -e "$sha^{commit}" 2>/dev/null; then
   echo "不明 (直前のベンチか、その sha が無い)"
 else
-  out=$(git -C "$caller" log --first-parent --format='%s%x09%h %an' "$psha..$sha" | grep -vE "^(Merge remote-tracking branch 'origin/|Revert \"Merge remote-tracking branch 'origin/|Revert \"Revert )" \
-    | awk -F'\t' '{ print $2 ": " $1 }')
+  out=$(git -C "$caller" log --first-parent --format='%s%x09%h %an' "$psha..$sha" \
+    | awk -F'\t' '$1 ~ /^Merge pull request #/ || ($1 !~ /^Merge / && $1 !~ /^Revert /) { print $2 ": " $1 }')
   if [ -z "$out" ]; then echo "なし"
   else
     echo "あり (このベンチの採否はこれを含む。人に、PR に queue ラベルを付けて出すよう頼む)"

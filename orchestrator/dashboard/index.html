@@ -78,6 +78,7 @@ a { color: var(--series-1); }
   <div class="kpi"><b id="cur">-</b><span>最新スコア</span></div>
   <div class="kpi"><b id="best">-</b><span>ベスト</span></div>
   <div class="kpi"><b id="nbench">-</b><span>ベンチ回数</span></div>
+  <div class="kpi"><b id="lock" style="font-size:15px">-</b><span>本番サーバのロック（bin/lock.sh）</span></div>
   <nav style="margin-left:auto;font-size:13px"><a href="/docs/">ドキュメント（state/docs）</a></nav>
 </header>
 <div class="errors" id="errors"></div>
@@ -109,6 +110,10 @@ a { color: var(--series-1); }
     <section>
       <h2>マージ待ち（ベンチの順、Coordinator が rank した時点）</h2>
       <div class="scroll"><table id="queue"></table></div>
+    </section>
+    <section>
+      <h2>人が作業中（競技リポジトリの Issue。Coordinator が同期した時点）</h2>
+      <div class="scroll"><table id="claims"></table></div>
     </section>
     <section>
       <h2>競技中の知見（docs/insights.md、Coordinator が更新） <a href="/docs/#insights.md" style="font-weight:400">他のドキュメント</a></h2>
@@ -311,8 +316,23 @@ function renderQueue(r) {
   if (!r || !r.queue?.length) { $("queue").innerHTML = '<tr><td class="muted">なし</td></tr>'; return; }
   $("queue").innerHTML = `<tr><th class="num">#</th><th class="num">優先度<br>度×確信</th><th class="num">待ち</th><th>タスク</th></tr>` +
     r.queue.map((q, i) => `<tr title="${esc(JSON.stringify(q.targets || []))}"><td class="num">${i + 1}</td><td class="num">${q.priority}<br><span class="muted" style="font-size:11px">${q.degree}×${q.confidence}</span></td><td class="num">${q.wait_min}分${q.aged ? " ⏱" : ""}</td>
-      <td style="white-space:normal">${(r.batch || []).includes(q.task_id) ? "📦 " : ""}${esc(q.title)}<br><span class="muted">${esc(q.task_id)}${q.batchable ? " · まとめ可" : ""}${q.restart_risk ? " · restart" : ""}</span></td></tr>`).join("") +
-    `<tr><td colspan="4" class="muted" style="white-space:normal">基準ベンチ ${esc(r.bench || "なし")} · ${hms(new Date(r.ranked_at * 1000).toISOString())} 時点 · ⏱ = 20分以上待ち（先頭に出す） · 📦 = 次のベンチでまとめて適用</td></tr>`;
+      <td style="white-space:normal">${(r.batch || []).includes(q.task_id) ? "📦 " : ""}${q.pr ? "👤 " : ""}${esc(q.title)}<br><span class="muted">${esc(q.task_id)}${q.author ? " · @" + esc(q.author) : ""}${q.conflict === true ? " · main と競合" : ""}${q.batchable ? " · まとめ可" : ""}${q.restart_risk ? " · restart" : ""}</span></td></tr>`).join("") +
+    `<tr><td colspan="4" class="muted" style="white-space:normal">基準ベンチ ${esc(r.bench || "なし")} · ${hms(new Date(r.ranked_at * 1000).toISOString())} 時点 · 👤 = 人の PR（先頭に出す） · ⏱ = 20分以上待ち（先頭に出す） · 📦 = 次のベンチでまとめて適用</td></tr>`;
+}
+
+function renderLock(l) {
+  const el = $("lock");
+  if (!l || l.error) { el.textContent = "不明"; el.title = l?.error || ""; el.style.color = "var(--warning)"; return; }
+  el.title = "";
+  if (!l.held) { el.textContent = "空き"; el.style.color = ""; return; }
+  const m = l.age_sec / 60 | 0;
+  el.textContent = `${l.who}（${m}分${l.age_sec % 60}秒）`;
+  el.style.color = l.age_sec > 600 ? "var(--critical)" : "";   // 10分を超えたら残ったロックを疑う
+}
+
+function renderClaims(c) {
+  $("claims").innerHTML = !c?.length ? '<tr><td class="muted">なし</td></tr>' :
+    c.map(x => `<tr><td class="num">#${x.number}</td><td style="white-space:normal">${esc(x.title)}${x.area ? `<br><span class="muted">範囲: ${esc(x.area)}</span>` : ""}</td><td>@${esc(x.who || "")}</td></tr>`).join("");
 }
 
 // 最新ベンチの summary.md をそのまま出す。表と元の出力はベンチ詳細ページで見る
@@ -341,7 +361,8 @@ async function tick() {
     renderBench(rows);
   });
   fetch("/state/merge-queue.json").then(r => r.ok ? r.json() : []).catch(() => []).then(q => { mergeIds = new Set(q.map(x => x.task_id)); renderTasks(state.tasks); });
-  renderAnalysis(state.analysis?.id);
+  renderAnalysis(state.analysis?.id); renderLock(state.lock);
+  fetch("/state/human-claims.json").then(r => r.ok ? r.json() : null).then(renderClaims).catch(() => renderClaims(null));
   fetch("/state/queue-rank.json").then(r => r.ok ? r.json() : null).then(renderQueue).catch(() => renderQueue(null));
   fetch("/state/docs/insights.md").then(r => r.ok ? r.text() : "（まだありません）").then(t => {
     if ($("insights").textContent !== t) { $("insights").textContent = t; $("insights").classList.toggle("muted", !t.trim()); }

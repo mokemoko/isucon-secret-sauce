@@ -9,7 +9,7 @@
 |---|---|---|
 | 22 | [リハ#7] measure-extra が実行中の bench.sh をその場で書き換え、ベースラインの1回が bench.jsonl に載らなかった | todo |
 | 23 | [リハ#7] queue.sh requeue 直後（リベースの worker_done 前）の項目が rank の .batch の先頭に出る | todo |
-| 24 | [リハ#7] with-bench-lock.sh を STATE が相対パスの状態で使うと bench.lock が残る（Browser prod が報告） | todo |
+| 24 | [リハ#7] with-bench-lock.sh を STATE が相対パスの状態で使うと bench.lock が残る（Browser prod が報告） | done |
 | 25 | [リハ#7] ベンチ1回176秒のうち約100秒が計測の待ち（pprof の seconds が負荷走行より長い、slow log の回収と pt の解析をロック中に行う） | todo |
 | 26 | [リハ#7] Coordinator が `needs_human` のゲートに期限（既定は却下）を付け、expected_gain=high を含む3件が20分で自動却下された | todo |
 | 27 | [リハ#7] タスクのタイトルの `[要承認]` が二重になる（Analyst の title に既に付いている） | todo |
@@ -31,6 +31,7 @@
 - 現象: Browser（target=prod）が STATE を相対パスで with-bench-lock.sh を使い、bench.lock が残った（本人が手で解除）
 - 影響: 次の bench.sh が mkdir ロックで永久待ちになる
 - 回避: STATE を絶対パスで渡す。スクリプト側で STATE を絶対パスに正規化すべき
+- 対応: ロックを本番サーバ上（`bin/lock.sh`）に移し、STATE に依存しなくなった
 
 ## 25. ベンチ枠の約6割が計測の待ち
 - 現象：ベンチ1回の平均176秒のうち、負荷走行は約70秒。pprof の `seconds=110`（setup が設定）を待つのに約40秒、slow log（1回で数百 MB）の回収と pt-query-digest に50〜94秒かかり、その間ずっとベンチのロックを持つ。計測を止めた後は74秒

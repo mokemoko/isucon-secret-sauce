@@ -1,7 +1,7 @@
 // ISUCON 自律チューニングのダッシュボード。
 // state/ (bench.jsonl, analysis/, phase, human-claims.json) と Orca orchestration の状態、本番サーバのロック (bin/lock.sh) を読み、人間の示唆・ゲート回答を Orca に流す。
-// 問題情報を外に出さないため、必ず 127.0.0.1 か Tailscale のアドレスで待ち受けること。チームでの共有は gateway/ (EC2 + Caddy の Basic 認証、ssh -R) を通す。
-// 起動: cd dashboard && go run . [-run <run_id>] [-end 2026-10-31T18:00:00+09:00] [-addr <tailscale-ip>:9180]  (省略時は state/run_id・state/end)
+// 問題情報を外に出さないため、必ず 127.0.0.1 で待ち受けること。チームでの共有は gateway/ (EC2 + Caddy、接続元の IP 制限、ssh -R) を通す。
+// 起動: cd dashboard && go run . [-run <run_id>] [-end 2026-10-31T18:00:00+09:00] [-addr 127.0.0.1:9180]  (省略時は state/run_id・state/end)
 package main
 
 import (
@@ -32,7 +32,7 @@ var benchHTML []byte
 var docsHTML []byte
 
 var (
-	addr     = flag.String("addr", "127.0.0.1:9180", "listen address (localhost か Tailscale IP のみ。8080 等は競技アプリと衝突しやすいので避ける)")
+	addr     = flag.String("addr", "127.0.0.1:9180", "listen address (localhost のみ。共有は gateway/ を通す。8080 等は競技アプリと衝突しやすいので避ける)")
 	stateDir = flag.String("state", "../state", "bench lane の state ディレクトリ")
 	runID    = flag.String("run", "", "Orca orchestration Run id。省略時は <state>/run_id")
 	endAt    = flag.String("end", "", "競技終了時刻 RFC3339 (例 2026-10-31T18:00:00+09:00)。省略時は <state>/end")
@@ -107,7 +107,7 @@ func handleState(w http.ResponseWriter, r *http.Request) {
 		b, _ := os.ReadFile(filepath.Join(*stateDir, "end"))
 		end = strings.TrimSpace(string(b))
 	}
-	res := map[string]any{"run": *runID, "end": end, "errors": []string{}, "me": r.Header.Get("X-Remote-User")}
+	res := map[string]any{"run": *runID, "end": end, "errors": []string{}}
 	errs := []string{}
 	phase, _ := os.ReadFile(filepath.Join(*stateDir, "phase"))
 	res["phase"] = strings.TrimSpace(string(phase))
@@ -218,10 +218,6 @@ func post(fn func(body map[string]string) (args []string, done func(error), err 
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
-		}
-		// gateway (EC2 の Caddy) を通ったときは、Basic 認証の名前で送った人を決める (入力欄の名前より優先。Caddy が上書きするので偽れない)
-		if u := r.Header.Get("X-Remote-User"); u != "" {
-			body["who"] = u
 		}
 		args, done, err := fn(body)
 		if err == nil {

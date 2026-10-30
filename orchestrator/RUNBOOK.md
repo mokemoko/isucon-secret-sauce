@@ -23,12 +23,12 @@
    「`<isucon-secret-sauce の絶対パス>/orchestrator/prompts/coordinator.md` を読んで Coordinator として開始して。END=<競技終了時刻 例 2026-10-31T18:00:00+09:00>」（END を添えなければ coordinator.md の既定値）
    （orchestrator 一式と state/ は isucon-secret-sauce 側に置いたまま使う。競技リポジトリにはコピーしない）
 7. Coordinator が run を作ったら（`orchestrator/state/run_id` ができたら）、`cd orchestrator/dashboard && env -u GOROOT go run .` でダッシュボードを起動する（run_id と終了時刻は state から読む）
-   - チームメンバーとの共有は `orchestrator/gateway/` で行う（ダッシュボードは 127.0.0.1 のまま。EC2 の Caddy が HTTPS と Basic 認証を付けて中継する。HTTPS なので、他のメンバーの画面でも OS の通知が出る）。入口は開始前に立ててよい
+   - チームメンバーとの共有は `orchestrator/gateway/` で行う（ダッシュボードは 127.0.0.1 のまま。EC2 の Caddy が HTTPS を付けて中継し、入れるのはチームのネットワークの IP からだけ。HTTPS なので、他のメンバーの画面でも OS の通知が出る）。入口は開始前に立ててよい。全員が同じネットワークから使う前提
      ```
-     USERS="<名前> <名前> <名前>" [SUBNET=<public サブネット>] orchestrator/gateway/up.sh   # URL が出る。パスワードは ~/isucon/gateway/users.txt
+     [ALLOW_CIDRS=<出口の IP の範囲>] [SUBNET=<public サブネット>] orchestrator/gateway/up.sh   # URL が出る。ALLOW_CIDRS の既定は実行した PC の IP/32
      orchestrator/gateway/tunnel.sh      # ダッシュボードと同じ PC の別のターミナルで動かし続ける (切れたら張り直す)
      ```
-     パスワードは各自に個別に渡す（チームのチャンネルや公開の場所に貼らない）。ログイン名が、示唆・判断待ちの回答の送り主として付く。**認証の無い入口や、ダッシュボードを 0.0.0.0・グローバル IP で待ち受けさせることはしない**（問題・計測情報の公開になる）
+     出口の IP が変わって入れなくなったら `orchestrator/gateway/allow.sh`（今の IP を足す）。**ALLOW_CIDRS に全体（0.0.0.0/0）を入れたり、ダッシュボードを 0.0.0.0・グローバル IP で待ち受けさせたりしない**（問題・計測情報の公開になる）。同じ出口の IP を使う第三者（共用の回線・会社の NAT）からも入れてしまうので、そういう回線では使わない
 
 ## 終了後
 - `orchestrator/gateway/down.sh` で入口を消し、最後に「clean」と出ることを確かめる（消し忘れても起動から12時間で terminate する）

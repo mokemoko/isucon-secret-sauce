@@ -350,7 +350,6 @@ async function tick() {
   } catch (e) { $("errors").textContent = "ダッシュボードサーバに接続できません"; return; }
   const rows = enrich(state.bench || []);
   const passed = rows.filter(r => r.pass);
-  if (state.me && $("who").value !== state.me) { $("who").value = state.me; $("who").readOnly = true; $("who").title = "gateway のログイン名"; }
   $("phase").textContent = state.phase || "-";
   $("cur").textContent = rows.length ? (rows.at(-1).pass ? fmt(rows.at(-1).score) : "✕ fail") : "-";
   $("best").textContent = passed.length ? fmt(Math.max(...passed.map(r => r.score))) : "-";

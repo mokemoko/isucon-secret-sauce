@@ -3,7 +3,7 @@
 ## 事前準備（競技前日まで）
 - `~/.ssh/config` に `Include ~/isucon/ssh_config` を追記しておく（当日は ssh_config だけを書けばよい）
 - `brew install alp percona-toolkit k6`。`gh auth status` が通ること（オーケストレータを動かす PC だけでなく、全員）
-- 全員が同じ Tailscale の tailnet に入り、管理画面で MagicDNS と HTTPS 証明書を有効にしておく（ダッシュボードの共有に使う）
+- ダッシュボードの入口（`orchestrator/gateway/`）を、前日までに一度立てて消し、手順を確かめておく。**自分たちの AWS アカウント**に作る（競技の AWS 環境には作らない）。データは置かず中継するだけだが、問題・計測情報をインターネットから届く入口に通すので、ISUCON2026 のレギュレーションで許されることを事前に確かめる
 - オーケストレータと並行して作業する人は、下の「オーケストレータと並行して作業する人へ」を読んでおく。自分のエージェントを使う人は、その約束をエージェントにも渡す
 - Orca で Claude Code が起動できること。過去問でリハーサル済みであること
 - `orchestrator/ISSUE.md` を空にする（表の見出しだけ残す）。残す知見は先に `orchestrator/KNOWLEDGE.md`・`knowledge/` に移す。当日は Coordinator が当日の課題をここに書き足す
@@ -23,7 +23,15 @@
    「`<isucon-secret-sauce の絶対パス>/orchestrator/prompts/coordinator.md` を読んで Coordinator として開始して。END=<競技終了時刻 例 2026-10-31T18:00:00+09:00>」（END を添えなければ coordinator.md の既定値）
    （orchestrator 一式と state/ は isucon-secret-sauce 側に置いたまま使う。競技リポジトリにはコピーしない）
 7. Coordinator が run を作ったら（`orchestrator/state/run_id` ができたら）、`cd orchestrator/dashboard && env -u GOROOT go run .` でダッシュボードを起動する（run_id と終了時刻は state から読む）
-   - チームメンバーとの共有は `tailscale serve --bg 9180` で行う（ダッシュボードは 127.0.0.1 のまま。tailnet の中だけに `https://<マシン名>.<tailnet 名>.ts.net/` で出る。HTTPS なので、他のメンバーの画面でも OS の通知が出る）。終わったら `tailscale serve reset`。**`tailscale funnel` やグローバル IP で公開しない**（問題・計測情報の公開になる）
+   - チームメンバーとの共有は `orchestrator/gateway/` で行う（ダッシュボードは 127.0.0.1 のまま。EC2 の Caddy が HTTPS と Basic 認証を付けて中継する。HTTPS なので、他のメンバーの画面でも OS の通知が出る）。入口は開始前に立ててよい
+     ```
+     USERS="<名前> <名前> <名前>" [SUBNET=<public サブネット>] orchestrator/gateway/up.sh   # URL が出る。パスワードは ~/isucon/gateway/users.txt
+     orchestrator/gateway/tunnel.sh      # ダッシュボードと同じ PC の別のターミナルで動かし続ける (切れたら張り直す)
+     ```
+     パスワードは各自に個別に渡す（チームのチャンネルや公開の場所に貼らない）。ログイン名が、示唆・判断待ちの回答の送り主として付く。**認証の無い入口や、ダッシュボードを 0.0.0.0・グローバル IP で待ち受けさせることはしない**（問題・計測情報の公開になる）
+
+## 終了後
+- `orchestrator/gateway/down.sh` で入口を消し、最後に「clean」と出ることを確かめる（消し忘れても起動から12時間で terminate する）
 
 ## 競技中
 - 示唆・指示はダッシュボードの入力欄から送る。承認待ちはダッシュボードに出る

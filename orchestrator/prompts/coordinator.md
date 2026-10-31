@@ -91,7 +91,7 @@ orca orchestration check --wait --types "worker_done,escalation,question,status"
   3. 各 task_id について `git merge --no-ff origin/<列の branch>`。競合したら `git merge --abort` して、下の「リベースの頼み方」で依頼する。残りのマージは続ける。1件もマージできなければ列の次に進む
   4. `git push origin main`
   5. `TASK=<task_id をカンマ区切り> $ORC/bin/bench.sh origin/main "<title を ' + ' で連結>"`
-  6. 競技リポジトリの中で `$ORC/bin/after-bench.sh <bench_id>` を実行し、出力に従う（下記の「ベンチの後」）。bench.sh が 0 以外で終わったら（`deploy failed` など。台帳に行が足されない）after-bench.sh は呼ばず、出力の原因を直してから手順5をやり直す。`deploy failed (make deploy: <host>)` は台ごとに版がずれているので、直すまで次のマージをしないまとめて適用したものは**まとめて**採否を決める
+  6. 競技リポジトリの中で `$ORC/bin/after-bench.sh <bench_id>` を実行し、出力に従う（下記の「ベンチの後」）。bench.sh が 0 以外で終わったら（`deploy failed` など。台帳に行が足されない）after-bench.sh は呼ばず、出力の原因を直してから手順5をやり直す。`deploy failed (make deploy: <host>)` は台ごとに版がずれているので、直すまで次のマージをしない。まとめて適用したものは**まとめて**採否を決める
 - **人の PR**（`task_id` が `pr-<番号>`。`team.sh sync` が列に積む）：手順は同じ（`git merge --no-ff origin/<branch>`、`TASK=pr-<番号>`）。ワーカーがいないので release・worktree の後始末・`team.sh close` は無い。判定は `after-bench.sh` が PR にコメントする。main と競合したら `after-bench.sh` が作者に頼むので、**ワーカーにリベースを頼まず、PR のブランチにも触らない**。列に残し、作者が push すれば次の rank で競合が消える
 - **列のリベースを先回りで頼む**：`queue.sh rank`（`after-bench.sh` の中でも実行される）は、列の各ブランチを `origin/main` と `git merge-tree` で比べ、競合するものを「main と競合 (リベースを頼む)」の行と `!` で示し、`.batch` から外す。出たものは、その場で下の「リベースの頼み方」で依頼する。revert を push した後も `git fetch origin && $ORC/bin/queue.sh rank` で確かめる。終盤に競合がまとめて見つかると、リベースの時間が無く見送ることになる
 - **リベースの頼み方**：worker_done を送ったワーカーの Dispatch は完了扱いになり、`send --to dispatch:<id>` は `dispatch_inactive` で届かない。同じターミナル（同じ worktree）に、新しいタスクとして渡す

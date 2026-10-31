@@ -106,6 +106,7 @@ orca orchestration check --wait --types "worker_done,escalation,question,status"
 
 ### ベンチの後（`$ORC/bin/after-bench.sh <bench_id>`）
 ベンチのたびに、競技リポジトリの中で1回だけ実行する（再起動確認・retry のベンチも）。採否の判定・警告の増減・ボトルネックの移動・再起動確認の要否・列の順位と競合を1回で出す。ベンチとベンチの間の作業を短くするため、ここに出ることは自分で調べ直さない
+- **次のベンチを先に始める**：ベンチ枠が律速なので、verdict に従う処理（revert・retry・採用の記録）と、出力にある本番に関わる対処（再起動確認の要否、競合のリベース依頼）を済ませたら、列が空でなければ**ワーカーの管理より先に**次のベンチ（retry・再起動確認・列の `.batch`）を始める。ワーカーの起動・release・worktree の後始末、Analyst の起動、insights・coord-notes の更新は、そのベンチの後処理と一緒に行う（どれも手元の作業で、ベンチ中の本番に影響しない）。ただし人間のゲートの回答の処理（gate-resolve）は先に済ませる
 - `## judge` の verdict：下の「採否の判定」に従う
 - `warnings_increased=yes`：LocalBench の改善を起動する（下記）。insights の「採点について分かったこと」に書く
 - `moved=yes`：`summary.md` を読み、insights の「現在のボトルネック」を書き換え、Analyst の起動条件を確かめる。`moved=no` なら summary は読まない

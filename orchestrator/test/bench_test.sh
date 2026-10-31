@@ -98,4 +98,27 @@ id=$(tail -n1 "$STATE/bench.jsonl" | jq -r .id)
 [ "$(jq -c 'map([.cmd, .count])' "$STATE/analysis/$id/h1/extcmd.json")" = '[["dnsctl add",1]]' ] || { echo "FAIL extcmd flow"; exit 1; }
 grep -q '^queries=60 (udp 60 tcp null、1/s)' "$STATE/analysis/$id/summary.md" && grep -q '^## extcmd h1' "$STATE/analysis/$id/summary.md" || { echo "FAIL dns/extcmd summary"; cat "$STATE/analysis/$id/summary.md"; exit 1; }
 
+# 7) BENCH_START_LOG: 負荷 (アクセスログへの書き込み) が来てから pprof を取る。来ないまま BENCH_CMD が終われば待ちを止める
+printf '#!/bin/sh\nshift; exec "$@"\n' >"$t/bin/timeout"; chmod +x "$t/bin/timeout"
+cat >"$t/bin/fakebench3" <<EOF
+#!/bin/sh
+sleep 1; echo GET >>"$t/access.log"; sleep 2
+echo '{"pass":true,"score":3}'
+EOF
+printf '#!/bin/sh\necho %s\n' "'{\"pass\":false,\"score\":0}'" >"$t/bin/fakebench4"; chmod +x "$t/bin/fakebench3" "$t/bin/fakebench4"
+echo prof >"$t/fake.pprof"
+cat >"$t/env.sh" <<EOF
+HOSTS="h1"; APP_HOST=h1; REPO_DIR=$t/app; LOG_FILES="$t/access.log"
+BENCH_CMD=fakebench3; BENCH_START_LOG=$t/access.log
+PPROF_URL=file://$t/fake.pprof; PROBE_URLS=""; ALP_ARGS=""; RESOURCE_SAMPLING=0
+EOF
+SKIP_DEPLOY=1 "$root/bin/bench.sh" HEAD >/dev/null
+id=$(tail -n1 "$STATE/bench.jsonl" | jq -r .id)
+[ -s "$STATE/analysis/$id/load-started" ] && [ -s "$STATE/analysis/$id/h1/cpu.pprof" ] || { echo "FAIL pprof after load start"; exit 1; }
+sed -i '' 's|^BENCH_CMD=fakebench3|BENCH_CMD=fakebench4|' "$t/env.sh"
+s0=$(date +%s); sleep 1
+SKIP_DEPLOY=1 "$root/bin/bench.sh" HEAD >/dev/null
+id=$(tail -n1 "$STATE/bench.jsonl" | jq -r .id)
+[ $(( $(date +%s) - s0 )) -lt 15 ] && [ ! -e "$STATE/analysis/$id/load-started" ] && [ ! -s "$STATE/analysis/$id/h1/cpu.pprof" ] || { echo "FAIL no-load wait not stopped"; exit 1; }
+
 echo "ok"

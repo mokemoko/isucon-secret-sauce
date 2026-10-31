@@ -51,7 +51,7 @@
 
 ### setup：git 化・計測導入・デプロイ経路（survey の後）
 1. webapp と主要設定（nginx, mysql, systemd unit）をリポジトリに集める。人間が用意した private リポジトリ（Coordinator のワークスペース。remote は origin）に push する。リポジトリの新規作成・公開設定の変更・deploy key の登録はしない（人間が `bin/deploy-key.sh` で登録済み。各サーバから `ssh -T git@github.com` が通る）
-   - **サーバ側で git 化して push する**：1台目で webapp のディレクトリに設定ファイルを写し（`etc/nginx/` などリポジトリ内の場所に）、`git init`・commit し、origin を競技リポジトリにして main を push する。手元は `git pull` で受け取る。サーバから手元へ rsync・scp でまとめて写さない（auto モードの判定で止まる）
+   - **サーバ側で git 化して push する**：1台目で webapp のディレクトリに設定ファイルを写し（`etc/nginx/` などリポジトリ内の場所に）、`git init`・commit し、origin を競技リポジトリにして main を push する。origin の main に既に commit がある（人間が入れた `.claude/settings.json` など）ときは、`git fetch origin && git reset origin/main && git checkout origin/main -- .` のように既存の commit の上に積んでから commit・push する（force push しない。既存のファイルを消さない）。手元は `git pull` で受け取る。サーバから手元へ rsync・scp でまとめて写さない（auto モードの判定で止まる）
    - 他のサーバは同じリポジトリを clone して、REPO_DIR に置く
    - 競技リポジトリは private なので、**認証情報を含む設定ファイル（DB のパスワード入りの設定・env ファイルなど）もそのまま入れてよい**（公開しないのでレギュレーションに反しない）。どうしても入れられなかったファイル（auto モードの判定で止まるものなど）は、原本をサーバに残し、**変える値だけを上書きするファイル**をリポジトリに入れて deploy で配置する（systemd の drop-in で `EnvironmentFile=` を後から読ませる、`conf.d/` に上書きの設定を置く、など。`$ORC/../knowledge/middleware.md`）。こうしておけば、DB の移設などで接続先を変えるときも人間の手作業は要らない。原本そのものは deploy で配置しない（サーバ上の原本をそのまま使う）。そのファイルの一覧と「deploy で配置しない」ことを `$STATE/docs/env.md` に書く。後のタスクが別経路で配置して壊すのを防ぐため
 2. リポジトリ直下の `Makefile` に `deploy` ターゲットを作る。中身は、ビルド、設定ファイルの配置（ホスト名で分岐してよい）、サービス再起動。サーバ上で `make deploy` が冪等に通ること
@@ -68,6 +68,7 @@
    - **受け入れ条件（全体）**：表のすべての行で「見えるか」が判定済みであること。見えない行があっても setup では深追いしない（Coordinator が measure-extra を並行で起動する）。ただし手段の見当（トレースの設定名、使えるツール）は書く
    - **ブラウザでの確認**：手元のブラウザから APP_HOST の画面を開く方法を env.md の「ブラウザでの確認」節に書く（手元から 443 に直接届くか、`ssh -L` の転送が要るか。アプリが期待するホスト名のパターンと、それを APP_HOST に向ける方法）。Phase 3 の Browser が使う
 4. `$ORC/env.sh` を埋める（`env.example.sh` 参照）。BENCH_CMD は manual の結果に従う
+   - 人間が既に書いた値（`HOSTS`・`GH_REPO`・`BENCH_CMD` など）は消さない。ベンチがポータルからしか実行できないときは、`BENCH_CMD` は人間が用意する（`$ORC/bin/portal-bench.sh`）。まだ書かれていなければ、ゲートで人間に頼んで待つ。自分でポータルを調べて作らない。あわせて `BENCH_START_LOG` に APP_HOST の nginx のアクセスログのパスを書く（ポータルの列で負荷の開始が遅れても、pprof を負荷の間に取るため）
    - `PROBE_URLS` は必須。DB のデータを返し、ベンチ以外では変化しない GET を2〜3個。URL の ID は**初期データ（`/initialize` で戻るデータ）にあるもの**を使う。ベンチが作ったデータは初期化や DB の移設で消え、再起動確認が「再起動前から失敗」で止まる。`/initialize` を1回呼んだ直後にも通ることを確かめる（認証が要らないもの。要るなら curl に cookie やヘッダを付けた形で書く）。再起動確認（`bin/restart-check.sh`）が再起動前後の応答を比べてデータの永続化を確かめるのに使い、空だと動かない。APP_HOST 上で `curl -fsS` が通ることを確かめる
    - 認証が要る GET しか無ければ、`PROBE_CURL_ARGS` に curl の引数（cookie・ヘッダ）を書く。APP_HOST のシェルで展開されるので、認証情報はサーバ上のコマンド置換（DB から取り出すなど）で得て、手元に持ち出さない。DB を別ホストへ移したら取得元も直す
 5. `$ORC/bin/bench.sh` を1回実行し、`bench.jsonl` に pass 行が出ることを確認する（このタスクに限り本番ベンチ実行可）

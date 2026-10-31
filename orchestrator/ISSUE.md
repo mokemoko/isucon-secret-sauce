@@ -13,7 +13,7 @@
 | 25 | [リハ#7] ベンチ1回176秒のうち約100秒が計測の待ち（pprof の seconds が負荷走行より長い、slow log の回収と pt の解析をロック中に行う） | todo |
 | 26 | [リハ#7] Coordinator が `needs_human` のゲートに期限（既定は却下）を付け、expected_gain=high を含む3件が20分で自動却下された | done |
 | 27 | [リハ#7] タスクのタイトルの `[要承認]` が二重になる（Analyst の title に既に付いている） | done |
-| 28 | [リハ#8] deploy.sh の git fetch が GitHub ssh 認証で断続的に Permission denied (publickey) になり deploy failed、本番が半分だけ新しい版になる | doing |
+| 28 | [リハ#8] deploy.sh の git fetch が GitHub ssh 認証で断続的に Permission denied (publickey) になり deploy failed、本番が半分だけ新しい版になる | done |
 | 29 | [リハ#8] bench.sh が deploy failed で終わっても after-bench.sh は bench.jsonl の最終行（前回のベンチ）を処理してしまう | done |
 | 30 | [リハ#8] ダッシュボードのベンチ履歴で、retry のベンチにも「再起動」の印が付く（retry も SKIP_DEPLOY=1 で走り、restart_check=true で記録される） | todo |
 | 31 | [リハ#8] after-bench.sh の「列を通らない変更」が、Coordinator のマージ（件名が一定しない）も検知していた | done |
@@ -57,6 +57,7 @@
 - 現象: 23:20 ごろ、DB 分離（3a0dce6）の deploy で3台とも `git@github.com: Permission denied (publickey)`。同じ鍵の `ssh -T git@github.com` を連続で試すと、成功（deploy key として / エージェント転送の個人鍵として）と拒否が混ざる。deploy key は GitHub に登録済みで、サーバの id_ed25519 と一致している
 - 影響: isu1 だけが新しい版に checkout され（mariadb を disable 済み）、isu2/isu3 は古い版のまま。DB の向き先がずれて、本番が壊れた状態になった
 - 回避策: bench.sh を再実行して deploy をやり直す。deploy.sh で fetch をリトライするのが望ましい
+- 対応: deploy.sh を2段にした。全台の fetch (1台ごとに2回まで再試行) と ref の確認が揃ってから checkout・make deploy に進むので、fetch の失敗で版がずれない。make deploy の失敗はホスト名つきで出す
 
 ## 29. deploy failed の後に after-bench.sh が前回のベンチを処理する
 - 現象: bench.sh が deploy failed で終わり、bench.jsonl に行が足されないまま、`after-bench.sh $(tail -1 bench.jsonl)` が前回のベンチ（231619）の判定と列の表示をやり直した（verdicts.jsonl への重複追記は無かった）

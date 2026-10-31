@@ -42,7 +42,8 @@ Coordinator から Orca orchestration 経由でタスクを受け取り、完了
 - 止めるときは `docker compose -f local/compose.yml down -v --rmi local`（ビルドしたイメージも消す）
 
 ## 作業ルール
-- 本番サーバへの変更は **git 経由のみ**（`$ORC/bin/bench.sh` が deploy する）。サーバ上で直接ファイルを編集・再起動しない。調査目的の読み取り（ssh でのコマンド実行、ログ閲覧）は可
+- 本番サーバへの変更は **git 経由のみ**（`$ORC/bin/bench.sh` が deploy する）。サーバ上で直接ファイルを編集しない。サービスの起動・停止・再起動・有効化もしない（調べるためでも。止まっている DB などを起動して中を見たいときは、Coordinator に頼む）。調査目的の読み取り（ssh でのコマンド実行、ログ閲覧）は可
+- サーバの役割（どのホストで何のサービスを動かすか）は競技リポジトリの `servers.conf` が正。役割を変えるときは `servers.conf`（と Makefile の役割の定義）を変え、deploy に揃えさせる。`servers.conf` が無いリポジトリでは Makefile の役割の分岐に従う
 - 本番ベンチを自分で回さない。ベンチは Coordinator が直列で回す
 - GitHub の Issue・PR を作らない・書き込まない。人との連携は Coordinator が `$ORC/bin/team.sh` で行う。push してよいのは自分のブランチだけ
 - 判断に迷ったら preamble の `ask` で Coordinator に聞く。ローカルで質問 UI を開かない

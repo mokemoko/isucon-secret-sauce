@@ -89,6 +89,36 @@ printf '%s\n' '{"cmd":"a","sec":0.1,"err":false}' '{"cmd":"a","sec":0.3,"err":tr
 got=$("$root/bin/digest/extcmd-jsonl.sh" "$t/ext.log" "$t/ext.txt" | jq -c 'map([.cmd, .count, .errors, (.sum * 10 | round), .p95, .max])')
 [ "$got" = '[["b",1,0,10,1,1],["a",2,1,4,0.3,0.3]]' ] || { echo "FAIL extcmd: $got"; exit 1; }
 
+# guard-journal: banned の行数・IP の異なり数・理由別、stats は最初と最後の累積の差
+printf '%s\n' 'stats: lines=10 action_logs=5 failures=2 bans=0' 'banned: ip=1.2.3.4 reason=login failures=10 window=10s' \
+  'banned: ip=1.2.3.4 reason=login failures=10 window=10s' 'ban failed: ip=9.9.9.9 reason=login: x' \
+  'banned: ip=5.6.7.8 reason=invalid_signature failures=3 window=5s' 'stats: lines=110 action_logs=85 failures=22 bans=3' >"$t/guard.raw"
+got=$("$root/bin/digest/guard-journal.sh" "$t/guard.raw" "$t/guard.txt" | jq -c .)
+[ "$got" = '{"bans":3,"ban_failed":1,"ips":2,"by_reason":{"invalid_signature":1,"login":2},"stats":{"lines":100,"action_logs":80,"failures":20,"bans":3}}' ] || { echo "FAIL guard: $got"; exit 1; }
+
+# appquery-isureal: routes は db_sum 降順、queries は sum 降順
+echo '{"sec":1,"pool":{"wait_count":0},"routes":[{"route":"a","db_sum":1},{"route":"b","db_sum":2}],"queries":[{"query":"x","sum":1},{"query":"y","sum":3}]}' >"$t/aq.raw"
+got=$("$root/bin/digest/appquery-isureal.sh" "$t/aq.raw" "$t/aq.txt" | jq -c '[.routes[].route, .queries[].query]')
+[ "$got" = '["b","a","y","x"]' ] || { echo "FAIL appquery: $got"; exit 1; }
+
+# pgact-sampler: 2回のサンプルで1回あたりの本数、ロック待ちの組、テーブルの差分 (パーティションをまとめる、MB)、pg_stat_io の差分
+mkdir -p "$t/pga"
+printf 'T\t100.0\nS\t1\tactive\tLock\ttransactionid\tUPDATE w SET x=1\t{2}\tSELECT 1 FOR UPDATE\tidle in transaction\nS\t2\tidle in transaction\tClient\tClientRead\tSELECT 1 FOR UPDATE\t{}\t\t\nT\t100.5\nS\t1\tactive\tLock\ttransactionid\tUPDATE w SET x=1\t{2}\tSELECT 1 FOR UPDATE\tidle in transaction\n' >"$t/pga/pgact-sampler.raw"
+printf 'R\tpublic.img_202601\t0\t0\t0\t0\t0\t0\t0\t0\nR\tpublic.img_202602\t0\t0\t0\t0\t0\t0\t0\t0\nI\tclient backend\trelation\tnormal\t0\t0\t0\t0\t8192\n' >"$t/pga/pgact-sampler.pre.tsv"
+printf 'R\tpublic.img_202601\t128\t0\t0\t0\t64\t0\t0\t0\nR\tpublic.img_202602\t0\t0\t0\t0\t64\t128\t0\t0\nI\tclient backend\trelation\tnormal\t256\t5.5\t0\t128\t8192\n' >"$t/pga/pgact-sampler.post.tsv"
+r=$("$root/bin/digest/pgact-sampler.sh" "$t/pga/pgact-sampler.raw" "$t/pga/raw.txt")
+got=$(echo "$r" | jq -c '[.ticks, .sec, .active_avg, (.waits | map([.state, .wait, .sessions])), (.lock_waits | map([.waiting, .blocker, .blocker_state, .samples])), .tables, (.io | map([.context, .read_mb, .read_ms, .hit_mb]))] | walk(if type == "number" then . + 0 else . end)')
+exp='[2,0.5,1.5,[["active","Lock:transactionid",1],["idle in transaction","Client:ClientRead",0.5]],[["UPDATE w SET x=1","SELECT 1 FOR UPDATE","idle in transaction",2]],[{"table":"public.img","read_mb":2,"hit_mb":1,"heap_read_mb":1,"toast_read_mb":1,"idx_read_mb":0}],[["normal",2,6,1]]]'
+[ "$got" = "$exp" ] || { echo "FAIL pgact: $got"; exit 1; }
+
+# digest.sh: appquery / guard / pgact の raw から <host>/<kind>.json と summary.md の節を作る
+mkdir -p "$t/st/analysis/b2/h1" "$t/st/analysis/b2/db"
+cp "$t/aq.raw" "$t/st/analysis/b2/h1/appquery-isureal.raw"; cp "$t/guard.raw" "$t/st/analysis/b2/h1/guard-journal.raw"; cp "$t/pga"/pgact-sampler.* "$t/st/analysis/b2/db/"
+ENV_FILE="$t/env.sh" "$root/bin/digest.sh" "$t/st/analysis/b2" >/dev/null 2>&1 || true
+for f in h1/appquery.json h1/guard.json db/pgact.json; do [ -s "$t/st/analysis/b2/$f" ] || { echo "FAIL digest $f: $(cat "$t/st/analysis/b2/digest.err" 2>/dev/null)"; exit 1; }; done
+for h in '## appquery h1' '## guard h1' '## pgact db'; do grep -q "^$h" "$t/st/analysis/b2/summary.md" || { echo "FAIL summary $h"; exit 1; }; done
+grep -q '^2 Lock:transactionid UPDATE w SET x=1 <= (idle in transaction) SELECT 1 FOR UPDATE' "$t/st/analysis/b2/summary.md" || { echo "FAIL summary lock_waits"; exit 1; }
+
 command -v pt-query-digest >/dev/null || { echo "ok (pt-query-digest なしのため query-pt は skip)"; exit 0; }
 # query-pt: fingerprint の英字が残り、制御文字と長さが抑えられること
 cols=$(seq -f 'column_%g' 1 100 | paste -sd, -)   # fingerprint 自体が 500 文字を超えるクエリ

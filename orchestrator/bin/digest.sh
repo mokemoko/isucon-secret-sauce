@@ -8,6 +8,11 @@
 #   <host>/extcmd.json    : [{cmd, count, errors, sum, avg, p95, max}] 秒・sum 降順。アプリが書く外部コマンドの実行時間のログ <host>/extcmd.log (LOG_FILES で回収) から
 #   <host>/dns.json       : {sec, restarted, queries:{udp,tcp}, answers, rcode:{noerror,nxdomain,servfail}, backend_queries, drops, cpu_sec, latency_us:{all,backend,...}}
 #                           DNS サーバの統計のベンチ前後の差分。EXTRA_COLLECT の dns-<tool>.collect.sh が置いた <host>/dns-<tool>.{pre,post}.json から
+#   <host>/appquery.json  : {sec, pool:{wait_count, wait_sec,...}, routes:[{route, count, avg, queries_avg, db_sum, db_avg,...}], queries:[{query, count, sum, avg, p95, max, errors}]}
+#                           アプリから見たクエリの時間 (RTT・行の転送を含む)。EXTRA_COLLECT の appquery-<tool>.collect.sh が置いた <host>/appquery-<tool>.raw から
+#   <host>/guard.json     : {bans, ban_failed, ips, by_reason, stats} BAN の常駐のベンチ中のログ。guard-<tool>.collect.sh の <host>/guard-<tool>.raw から
+#   <host>/pgact.json     : {ticks, sec, active_avg, waits[], lock_waits[], top_queries[], tables[], io[]} DB のセッションのサンプリングとテーブル・I/O の統計の差分。
+#                           pgact-<tool>.collect.sh の <host>/pgact-<tool>.raw (と .pre.tsv/.post.tsv) から
 #   <host>/resources.json : {ncpu, t:[秒], host:{user,sys,iowait,steal,mem (%), rx,tx,rd,wr (B/s)}, procs:[{comm, cpu:[%/1コア], rss:[MB], cpu_avg, cpu_max, rss_max}]}
 #   warnings.txt          : bench.txt のうち BENCH_WARN_RE (既定 'WARN|ERROR') に当たる行。整合性の警告・エラーの増減を見る (pass でも減点になりうる)
 #   penalty.txt           : BENCH_PENALTY_RE があれば、bench.txt で最後に当たった部分の最初の整数 (ベンチ自身が出す減点の件数)。無ければ作らない
@@ -38,6 +43,13 @@ for f in "$dir"/*/extcmd.log; do [ -s "$f" ] && run extcmd "${EXTCMD_DIGEST:-jso
 for f in "$dir"/*/dns-*.post.json; do
   [ -s "$f" ] || continue; t=${f##*/dns-}; t=${t%.post.json}
   run dns "$t" "$f" "${f%/*}/dns.json" "${f%/*}/dns-$t.txt"
+done
+# EXTRA_COLLECT の appquery-* / guard-* / pgact-* (<host>/<kind>-<tool>.raw → <host>/<kind>.json)
+for k in appquery guard pgact; do
+  for f in "$dir"/*/"$k"-*.raw; do
+    [ -s "$f" ] || continue; t=${f##*/"$k"-}; t=${t%.raw}
+    run "$k" "$t" "$f" "${f%/*}/$k.json" "${f%/*}/$k-$t.txt"
+  done
 done
 [ -s "$dir/collect.err" ] && cat "$dir/collect.err" >>"$dir/digest.err"
 
@@ -97,6 +109,34 @@ for f in "$dir"/*/cpu.pprof; do [ -s "$f" ] && run profile "$PROFILE_DIGEST" "$f
       "queries=\($q) (udp \(.queries.udp) tcp \(.queries.tcp)、\(if .sec > 0 then $q / .sec | r else "-" end)/s) noerror=\(.rcode.noerror) nxdomain=\(.rcode.nxdomain) servfail=\(.rcode.servfail) backend_queries=\(.backend_queries) (問い合わせあたり \(if $q > 0 and .backend_queries then .backend_queries / $q | r else "-" end))",
       "drops overload=\(.drops.overload) timedout=\(.drops.timedout) udp_recvbuf=\(.drops.udp_recvbuf) udp_in=\(.drops.udp_in) cpu user=\(.cpu_sec.user | r)s sys=\(.cpu_sec.sys | r)s",
       "latency_us (移動平均・ベンチ終わりの値) all=\(.latency_us.all) backend=\(.latency_us.backend) receive=\(.latency_us.receive) send=\(.latency_us.send) qsize=\(.latency_us.qsize)"' "$f"
+  done
+  for f in "$dir"/*/appquery.json; do
+    [ -f "$f" ] || continue
+    echo; jq -r "$(ms)"' "## appquery \(input_filename | split("/")[-2]) \(.sec | round)s (アプリから見たクエリの時間。RTT・行の転送を含む。DB 内の時間は DB ホストの queries)",
+      "pool: 接続待ち \(.pool.wait_count) 回 \(.pool.wait_sec * 10 | round / 10)s (max_open \(.pool.max_open))",
+      "db_sum db/req queries/req req_avg count route (ルートごと。db はリクエスト中のクエリ時間の合計)",
+      (.routes[0:10][] | "\(.db_sum * 10 | round / 10)s \(.db_avg | ms) \(.queries_avg * 10 | round / 10) \(.avg | ms) \(.count) \(.route)"),
+      "sum avg p95 count errors query", (.queries[0:8][] | "\(.sum * 10 | round / 10)s \(.avg | ms) \(.p95 | ms) \(.count) \(.errors) \(.query | .[0:200])")' "$f"
+  done
+  for f in "$dir"/*/guard.json; do
+    [ -f "$f" ] || continue
+    echo; jq -r '"## guard \(input_filename | split("/")[-2]) (BAN の常駐のベンチ中のログ)",
+      "bans=\(.bans) ips=\(.ips) ban_failed=\(.ban_failed) by_reason=\(.by_reason | to_entries | map("\(.key):\(.value)") | join(","))" +
+      (if .stats then " 読んだ行=\(.stats.lines) action_logs=\(.stats.action_logs) failures=\(.stats.failures)" else "" end)' "$f"
+  done
+  for f in "$dir"/*/pgact.json; do
+    [ -f "$f" ] || continue
+    echo; jq -r '"## pgact \(input_filename | split("/")[-2]) \(.ticks) 回 / \(.sec)s (pg_stat_activity のサンプリング。sessions は1回あたりの平均の本数)",
+      "active_avg=\(.active_avg) (idle 以外のセッション)",
+      "sessions share state wait (空は CPU で実行中。idle in transaction + Client:ClientRead はトランザクション中にアプリを待っている)",
+      (.waits[0:6][] | "\(.sessions) \(.share)% \(.state) \(.wait)"),
+      (if (.lock_waits | length) > 0 then "ロック待ち: samples wait 待っている文 <= 待たせている側 (状態) の文", (.lock_waits[0:5][] | "\(.samples) \(.wait) \(.waiting | .[0:120]) <= (\(.blocker_state)) \(.blocker | .[0:120])") else "ロック待ち: サンプルに無し" end),
+      "テーブルの読み (MB。disk=共有バッファに無く読んだ分、partition はまとめる): read hit heap/toast/idx table",
+      (.tables[0:6][] | "\(.read_mb) \(.hit_mb) \(.heap_read_mb)/\(.toast_read_mb)/\(.idx_read_mb) \(.table)"),
+      "pg_stat_io (client backend): " + (.io | map(select(.backend_type == "client backend")) | map("\(.context) read=\(.read_mb)MB/\(.read_ms)ms hit=\(.hit_mb)MB") | join(", "))' "$f"
+    q=${f%/*}/queries.json
+    [ -f "$q" ] && jq -r '"blks_read 上位のクエリ (pg_stat_statements の shared_blks_read。MB): " + (map(select(.blks_read != null)) | sort_by(-.blks_read) | .[0:3] | map("\(.blks_read * 8192 / 1048576 | round)MB \(.fingerprint | .[0:80])") | join(" / "))' "$q"
+    ls "$dir"/*/endpoints.json >/dev/null 2>&1 && jq -rs '"応答の転送量の上位 (アプリ全台の body_sum。MB): " + (add | group_by([.method, .uri]) | map({k: "\(.[0].method) \(.[0].uri)", b: (map(.body_sum // 0) | add)}) | sort_by(-.b) | .[0:3] | map("\(.b / 1048576 | round)MB \(.k)") | join(" / "))' "$dir"/*/endpoints.json
   done
   for f in "$dir"/*/profile.json; do
     [ -f "$f" ] || continue

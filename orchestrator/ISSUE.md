@@ -7,5 +7,17 @@
 
 | # | 課題 | 状態 |
 |---|---|---|
+| 1 | Coordinator の gate-resolve が auto モードの判定で拒否される | doing |
+| 2 | 人間が拒否したツール呼び出しが一部実行されていた（worker-start 済み） | done |
 
 ---
+
+## 1. gate-resolve が拒否される
+- 現象: [human-gate] の回答を受けて gate-resolve を実行すると auto モードの判定で拒否された（10:50頃）
+- 影響: 承認済みの仮説 #7 の起動が遅れた
+- 回避策: 人間が `!` で gate-resolve を実行した。許可ルールの追加が要る
+
+## 2. 拒否したはずの呼び出しの一部が実行されていた
+- 現象: 複数のコマンドをまとめた Bash を人間が拒否したが、worker-start（impl-session）は実行済みだった
+- 影響: 再実行が task_not_startable になった。queue add は冪等だったので重複しなかった
+- 回避策: 拒否の後は dispatch-show・列で実際の状態を確かめてからやり直す

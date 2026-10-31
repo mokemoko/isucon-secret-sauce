@@ -52,6 +52,7 @@
 ### setup：git 化・計測導入・デプロイ経路（survey の後）
 1. webapp と主要設定（nginx, mysql, systemd unit）をリポジトリに集める。人間が用意した private リポジトリ（Coordinator のワークスペース。remote は origin）に push する。リポジトリの新規作成・公開設定の変更・deploy key の登録はしない（人間が `bin/deploy-key.sh` で登録済み。各サーバから `ssh -T git@github.com` が通る）
    - **サーバ側で git 化して push する**：1台目で webapp のディレクトリに設定ファイルを写し（`etc/nginx/` などリポジトリ内の場所に）、`git init`・commit し、origin を競技リポジトリにして main を push する。origin の main に既に commit がある（人間が入れた `.claude/settings.json` など）ときは、`git fetch origin && git reset origin/main && git checkout origin/main -- .` のように既存の commit の上に積んでから commit・push する（force push しない。既存のファイルを消さない）。手元は `git pull` で受け取る。サーバから手元へ rsync・scp でまとめて写さない（auto モードの判定で止まる）
+   - サーバ上のエージェント向けの指示ファイル（`AGENTS.md`・`CLAUDE.md`・`GEMINI.md` など）はリポジトリに入れない（`.gitignore` に書く。サーバ上のファイルは消さない）。ワーカーが読んで作業を止めるのを防ぐため
    - 他のサーバは同じリポジトリを clone して、REPO_DIR に置く
    - 競技リポジトリは private なので、**認証情報を含む設定ファイル（DB のパスワード入りの設定・env ファイルなど）もそのまま入れてよい**（公開しないのでレギュレーションに反しない）。どうしても入れられなかったファイル（auto モードの判定で止まるものなど）は、原本をサーバに残し、**変える値だけを上書きするファイル**をリポジトリに入れて deploy で配置する（systemd の drop-in で `EnvironmentFile=` を後から読ませる、`conf.d/` に上書きの設定を置く、など。`$ORC/../knowledge/middleware.md`）。こうしておけば、DB の移設などで接続先を変えるときも人間の手作業は要らない。原本そのものは deploy で配置しない（サーバ上の原本をそのまま使う）。そのファイルの一覧と「deploy で配置しない」ことを `$STATE/docs/env.md` に書く。後のタスクが別経路で配置して壊すのを防ぐため
 2. リポジトリ直下の `Makefile` に `deploy` ターゲットを作る。中身は、ビルド、設定ファイルの配置（ホスト名で分岐してよい）、サービス再起動。サーバ上で `make deploy` が冪等に通ること

@@ -1,7 +1,7 @@
 // ISUCON 自律チューニングのダッシュボード。
-// state/ (bench.jsonl, analysis/, phase) と Orca orchestration の状態を読み、人間の示唆・ゲート回答を Orca に流す。
-// 問題情報を外に出さないため、必ず 127.0.0.1 か Tailscale のアドレスで待ち受けること。
-// 起動: cd dashboard && go run . [-run <run_id>] [-end 2026-10-31T18:00:00+09:00] [-addr <tailscale-ip>:9180]  (省略時は state/run_id・state/end)
+// state/ (bench.jsonl, analysis/, phase, human-claims.json) と Orca orchestration の状態、本番サーバのロック (bin/lock.sh) を読み、人間の示唆・ゲート回答を Orca に流す。
+// 問題情報を外に出さないため、必ず 127.0.0.1 で待ち受けること。チームでの共有は gateway/ (EC2 + Caddy、接続元の IP 制限、ssh -R) を通す。
+// 起動: cd dashboard && go run . [-run <run_id>] [-end 2026-10-31T18:00:00+09:00] [-addr 127.0.0.1:9180]  (省略時は state/run_id・state/end)
 package main
 
 import (
@@ -32,11 +32,12 @@ var benchHTML []byte
 var docsHTML []byte
 
 var (
-	addr     = flag.String("addr", "127.0.0.1:9180", "listen address (localhost か Tailscale IP のみ。8080 等は競技アプリと衝突しやすいので避ける)")
+	addr     = flag.String("addr", "127.0.0.1:9180", "listen address (localhost のみ。共有は gateway/ を通す。8080 等は競技アプリと衝突しやすいので避ける)")
 	stateDir = flag.String("state", "../state", "bench lane の state ディレクトリ")
 	runID    = flag.String("run", "", "Orca orchestration Run id。省略時は <state>/run_id")
 	endAt    = flag.String("end", "", "競技終了時刻 RFC3339 (例 2026-10-31T18:00:00+09:00)。省略時は <state>/end")
 	orcaBin  = flag.String("orca", "orca", "orca CLI")
+	lockBin  = flag.String("lock", "../bin/lock.sh", "本番サーバのロックの状態を出すスクリプト")
 )
 
 func orca(args ...string) (json.RawMessage, error) {
@@ -70,6 +71,33 @@ func readBench() []json.RawMessage {
 		}
 	}
 	return rows
+}
+
+// 本番サーバのロック (bin/lock.sh status --json)。ssh を伴うので、閲覧者の数によらず5秒ごとに1回だけ取る
+var (
+	lockMu    sync.Mutex
+	lockState json.RawMessage = json.RawMessage(`{"error":"未取得"}`)
+)
+
+func pollLock() {
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		out, err := exec.CommandContext(ctx, *lockBin, "status", "--json").Output()
+		cancel()
+		v := json.RawMessage(strings.TrimSpace(string(out)))
+		if err != nil || !json.Valid(v) {
+			msg := "lock.sh status に失敗"
+			if err != nil {
+				msg += ": " + err.Error()
+			}
+			b, _ := json.Marshal(map[string]string{"error": msg})
+			v = b
+		}
+		lockMu.Lock()
+		lockState = v
+		lockMu.Unlock()
+		time.Sleep(5 * time.Second)
+	}
 }
 
 // ponytail: リクエスト毎に orca CLI を叩く。閲覧者3人×3秒ポーリングなら十分、重ければ数秒キャッシュを足す
@@ -106,6 +134,9 @@ func handleState(w http.ResponseWriter, r *http.Request) {
 		res[key] = m[key]
 	}
 	res["errors"] = errs
+	lockMu.Lock()
+	res["lock"] = lockState
+	lockMu.Unlock()
 	gateMu.Lock()
 	res["answers"] = gateAnswers
 	w.Header().Set("Content-Type", "application/json")
@@ -237,6 +268,7 @@ func main() {
 		}
 		*runID = strings.TrimSpace(string(b))
 	}
+	go pollLock()
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write(indexHTML)

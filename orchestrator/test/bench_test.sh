@@ -26,7 +26,7 @@ HOSTS="h1"; APP_HOST=h1; REPO_DIR=$t/app; LOG_FILES="$t/access.log $t/missing-sl
 BENCH_CMD=fakebench
 PPROF_URL=""; PROBE_URLS=""; ALP_ARGS=""
 EOF
-export ENV_FILE="$t/env.sh" STATE="$t/state"
+export ENV_FILE="$t/env.sh" STATE="$t/state" LOCK_PATH="$t/lock"
 # BENCH_CMD は単語分割で実行されるので、複合コマンドはスクリプトにする
 printf '#!/bin/sh\necho progress\necho %s\n' "'{\"pass\":true,\"score\":1234}'" >"$t/bin/fakebench"; chmod +x "$t/bin/fakebench"
 
@@ -40,7 +40,7 @@ line=$(tail -n1 "$STATE/bench.jsonl")
 id=$(echo "$line" | jq -r .id)
 [ -f "$STATE/analysis/$id/h1/access.log" ] && [ ! -s "$STATE/analysis/$id/h1/access.log" ] || { echo "FAIL log not truncated/collected"; exit 1; }
 [ ! -e "$STATE/analysis/$id/h1/missing-slow.log" ] || { echo "FAIL missing log should be skipped"; exit 1; }
-[ ! -d "$STATE/bench.lock" ] || { echo "FAIL lock left"; exit 1; }
+[ ! -d "$t/lock" ] || { echo "FAIL lock left"; exit 1; }
 grep -q 'pass=true score=1234' "$STATE/analysis/$id/summary.md" || { echo "FAIL summary.md"; exit 1; }
 
 # 2) ベンチコマンド失敗 → pass:false で記録される

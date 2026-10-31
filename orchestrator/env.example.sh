@@ -1,6 +1,9 @@
 # 競技ごとの設定。Phase1 で `cp env.example.sh env.sh` して埋める
 HOSTS="isu1 isu2 isu3"               # ~/.ssh/config の Host 名
 APP_HOST=isu1                        # 再起動確認 probe の実行先
+GH_REPO=""                           # 競技リポジトリ (owner/repo)。bin/deploy-key.sh が書く。bin/team.sh (Issue・PR での他の人との連携) が使う
+LOCK_HOST=""                         # 本番サーバのロック (bin/lock.sh) を置くホスト。未設定なら APP_HOST。全員が ssh できるホストにする
+LOCK_PATH=""                         # ロックのディレクトリ。未設定なら /var/tmp/isucon-bench.lock (再起動で消えない場所)
 PPROF_HOSTS="isu1"                   # pprof を取るホスト (アプリが動く全台)。未設定なら APP_HOST
 REPO_DIR=/home/isucon/webapp         # 各サーバ上の git repo (remote 名 origin)。`make deploy` を Phase1 で用意する
 LOG_FILES="/var/log/nginx/access.log /var/log/mysql/mysql-slow.log"  # ベンチ前に truncate、後に回収。QUERY_DIGEST=pt (既定) のときは slow log も入れる

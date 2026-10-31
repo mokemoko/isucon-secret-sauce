@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # usage: bin/portal-bench.sh            ポータル (isuxportal) でベンチを1回実行し、終わるまで待つ。BENCH_CMD に使う
 #                                       標準出力: ベンチの出力 (警告・減点の行を BENCH_WARN_RE・BENCH_PENALTY_RE で拾える) と、最終行に {"pass","score","raw","deduction","job_id","status"}
-#        bin/portal-bench.sh targets    負荷をかける先の候補 (env.sh の PORTAL_TARGET_ID に書く id と、サーバの番号・IP)
+#        bin/portal-bench.sh targets    負荷をかける先の候補 (サーバの id・番号・IP)。PORTAL_TARGET_ID が空なら先頭を使う (ポータルの Enqueue ボタンと同じ)
 # Orca のブラウザで開いたポータルのタブ (PORTAL_PAGE。`orca tab list --worktree all --json` の browserPageId) の中で API を呼ぶ。
 # ログインの Cookie と CSRF トークンはそのタブのものを使い、手元には持ち出さない。タブを閉じる・ログアウトすると動かない
 set -euo pipefail
@@ -24,7 +24,12 @@ if [ "${1:-}" = targets ]; then
   exit 0
 fi
 
-: "${PORTAL_TARGET_ID:?env.sh に PORTAL_TARGET_ID (bin/portal-bench.sh targets の id) を書く}"
+# 負荷をかける先。未設定ならポータルの Enqueue ボタンと同じく、サーバ一覧の先頭 (session の contestant_instances[0])
+if [ -z "${PORTAL_TARGET_ID:-}" ]; then
+  r=$(call GET /api/session)
+  PORTAL_TARGET_ID=$(proto session "$(echo "$r" | jq -r .b64)" | jq -r '.[0].id // empty')
+  [ -n "$PORTAL_TARGET_ID" ] || { echo '{"pass":false,"score":0,"error":"portal: サーバ一覧が空 (ログイン・サーバの登録を確かめる)"}'; exit 0; }
+fi
 # EnqueueBenchmarkJobRequest { int64 target_id = 1 }
 body=$(python3 -I -c 'import sys
 n=int(sys.argv[1]); a=[8]

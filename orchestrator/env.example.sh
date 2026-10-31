@@ -9,7 +9,7 @@ REPO_DIR=/home/isucon/webapp         # 各サーバ上の git repo (remote 名 o
 LOG_FILES="/var/log/nginx/access.log /var/log/mysql/mysql-slow.log"  # ベンチ前に truncate、後に回収。QUERY_DIGEST=pt (既定) のときは slow log も入れる
 BENCH_CMD="echo TODO"                # ベンチ実行コマンド。標準出力の最終行に {"pass":bool,"score":int,...} を出すこと。ポータルからしか実行できないときは人間が用意する (bin/portal-bench.sh)
 PORTAL_PAGE=""                       # BENCH_CMD=bin/portal-bench.sh のとき。Orca のブラウザで開いたポータルのタブの browserPageId
-PORTAL_TARGET_ID=""                  # BENCH_CMD=bin/portal-bench.sh のとき。負荷をかける先 (bin/portal-bench.sh targets の id)。変えるのは人間
+PORTAL_TARGET_ID=""                  # 任意。負荷をかける先 (bin/portal-bench.sh targets の id)。空ならサーバ一覧の先頭 (ポータルの Enqueue ボタンと同じ)
 BENCH_START_LOG=""                   # 任意。負荷の開始が BENCH_CMD の開始とずれる (ポータルの列で待つ) とき、APP_HOST の nginx のアクセスログのパス。書かれ始めてから pprof を取る
 PPROF_URL=""                         # 例 "http://localhost:6060/debug/pprof/profile?seconds=60" (PPROF_HOSTS の各台の上で curl)
 PPROF_APP_RE=""                      # summary.md の cum 上位に出すアプリの関数 (jq の正規表現)。空なら ^main\. 。main 以外のパッケージにアプリがあるときに書く

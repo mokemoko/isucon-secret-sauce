@@ -12,7 +12,7 @@
 1. ポータルで AWS 環境を起動する（エージェントに AWS 権限は渡さない）
 2. 当日マニュアルの本文を `orchestrator/state/docs/manual-raw.md` に保存する
 3. サーバ IP を `orchestrator/state/docs/hosts.txt` に書き、`~/isucon/ssh_config` に `Host isu1` などを書く
-   - ベンチがポータルからしか実行できないとき：Orca のブラウザでポータルにログインしたタブを開いたままにし（閉じない・ログアウトしない）、`env.sh` に `BENCH_CMD="bin/portal-bench.sh"`・`PORTAL_PAGE=<そのタブの browserPageId。orca tab list --worktree all --json>`・`PORTAL_TARGET_ID=<負荷をかける先。bin/portal-bench.sh targets の id>` を書く。`bin/portal-bench.sh targets` が一覧を返すことを確かめる。負荷をかける先を変えるときは `PORTAL_TARGET_ID` を書き換える
+   - ベンチがポータルからしか実行できないとき：Orca のブラウザでポータルにログインしたタブを開いたままにし（閉じない・ログアウトしない）、`env.sh` に `BENCH_CMD="bin/portal-bench.sh"`・`PORTAL_PAGE=<そのタブの browserPageId。orca tab list --worktree all --json>`を書く（`PORTAL_TARGET_ID` は空でよい。ポータルの Enqueue ボタンと同じくサーバ一覧の先頭を使う）。`bin/portal-bench.sh targets` が一覧を返すことを確かめる
 4. GitHub に空の **private** リポジトリを作り、手元に clone する。Orca に `repo add` する
    - 他のメンバーを collaborator に招待する（Issue・PR を使うため）
    - `orchestrator/env.sh` を `env.example.sh` から作り `HOSTS` だけ書いてから、`orchestrator/bin/deploy-key.sh <owner/repo>` を実行する（env.sh に `GH_REPO` も書かれる）。各サーバの鍵を書き込み可の deploy key として登録する（書き込み権限を渡す操作なので、エージェントには実行させない。auto モードで止まる）

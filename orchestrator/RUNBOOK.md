@@ -11,7 +11,7 @@
 ## 10:00 開始直後
 1. ポータルで AWS 環境を起動する（エージェントに AWS 権限は渡さない）
 2. 当日マニュアルの本文を `orchestrator/state/docs/manual-raw.md` に保存する
-3. サーバ IP を `orchestrator/state/docs/hosts.txt` に書き、`~/isucon/ssh_config` に `Host isu1` などを書く
+3. サーバ IP を `orchestrator/state/docs/hosts.txt` に書き、`~/isucon/ssh_config` に `Host isu1` などを書く。`ForwardAgent no` も書く（`~/.ssh/config` の `Host *` で転送していると、サーバからの GitHub の認証が個人鍵と deploy key で揺れ、fetch が時々失敗する。個人鍵を競技サーバに渡さないためでもある）
    - ベンチがポータルからしか実行できないとき：Orca のブラウザでポータルにログインしたタブを開いたままにし（閉じない・ログアウトしない）、`env.sh` に `BENCH_CMD="bin/portal-bench.sh"`・`PORTAL_PAGE=<そのタブの browserPageId。orca tab list --worktree all --json>`を書く（`PORTAL_TARGET_ID` は空でよい。ポータルの Enqueue ボタンと同じくサーバ一覧の先頭を使う）。`bin/portal-bench.sh targets` が一覧を返すことを確かめる
 4. GitHub に空の **private** リポジトリを作り、手元に clone する。Orca に `repo add` する
    - 他のメンバーを collaborator に招待する（Issue・PR を使うため）

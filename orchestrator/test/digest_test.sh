@@ -41,6 +41,11 @@ exp='{"fingerprint":"SELECT * FROM `posts` WHERE `user_id` = ?","count":4,"sum":
 [ "$got" = "$exp" ] || { echo "FAIL psdigest: $got"; exit 1; }
 [ "$(echo "$r" | jq -r '.[1].sample')" = "" ] || { echo "FAIL psdigest NULL sample"; exit 1; }
 
+# query-pgss: ミリ秒を秒に、p95 は mean + 2*stddev、ヒット率
+printf 'SELECT * FROM posts WHERE id = $1\t100\t2500\t25\t300\t10\t100\t900\t100\n' >"$t/pgss.raw"
+got=$("$root/bin/digest/query-pgss.sh" "$t/pgss.raw" "$t/pgss.txt" | jq -c '.[0] | {count, sum, avg, p95, max, rows_examined_avg, rows_sent_avg, hit_ratio}')
+[ "$got" = '{"count":100,"sum":2.5,"avg":0.025,"p95":0.045,"max":0.3,"rows_examined_avg":null,"rows_sent_avg":1,"hit_ratio":0.9}' ] || { echo "FAIL pgss: $got"; exit 1; }
+
 # 採点の重み: 完全一致・^ 始まりの正規表現 (alp がまとめた uri にも当たる)・method "*"・不正な正規表現・未記載は null
 mkdir -p "$t/st/docs" "$t/st/analysis/b1/h1"; : >"$t/env.sh"
 cat >"$t/st/analysis/b1/h1/endpoints.json" <<'J'

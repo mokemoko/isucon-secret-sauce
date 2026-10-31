@@ -16,7 +16,7 @@
 #       実測より大きければ hint を使い、表に h を付ける
 #   確信度: expected_gain (high 1 / mid 0.6 / low 0.3)。ローカルベンチの予測は使わない (負荷が固定で、順位付けに使えなかった。リハ#2)
 #   AGE_MIN 分 (既定 20) 以上待ったものは優先度に関係なく先頭へ (古い順)
-#   人の PR (pr のある項目。bin/team.sh sync が積む) は、それよりさらに先頭 (古い順)。batchable にしない (単独で測る)
+#   人の PR (pr のある項目。bin/team.sh sync が積む) は、それよりさらに先頭 (PR の番号の小さい順)。batchable にしない (単独で測る)
 #   0点の間 (ベースラインから、pass かつ score>0 のベンチがまだ無い): タイトルが [0点解消] のものを先頭に置き、待ち時間の繰り上げはしない (0点の解消を追い越させない)
 # 競合: 呼び出し元のディレクトリが git repo なら、各 branch を origin/<branch> と origin/main で git merge-tree し、競合するものに
 #   conflict=true を付ける (表に ! を付ける)。競合するものは .batch に入れず、先頭が競合なら次のものから組む。fetch は呼び出し側で済ませる
@@ -74,7 +74,7 @@ case ${1:-} in
         | ((($now - .ready_at) / 60) | floor) as $wait
         | . + {conflict: $cf[.task_id], degree: ($degree | r2), degree_src: (if $hinted then "hint" else "measured" end), confidence: ($conf | r2), priority: ($degree * $conf | r2), wait_min: $wait, aged: ($wait >= $age and ($zero | not))})
       | if $zero then (map(select((.title // "") | startswith("[0点解消]"))) | sort_by(-.priority)) + (map(select((.title // "") | startswith("[0点解消]") | not)) | sort_by(-.priority))
-        else (map(select(.pr != null)) | sort_by(.ready_at)) + (map(select(.pr == null and .aged)) | sort_by(.ready_at)) + (map(select(.pr == null and (.aged | not))) | sort_by(-.priority)) end
+        else (map(select(.pr != null)) | sort_by(.pr)) + (map(select(.pr == null and .aged)) | sort_by(.ready_at)) + (map(select(.pr == null and (.aged | not))) | sort_by(-.priority)) end
       | def ok: (.batchable == true) and (.restart_risk != true);
         map(select(.conflict != true)) as $mergeable
         | ($mergeable | if length == 0 then [] elif (.[0] | ok) then

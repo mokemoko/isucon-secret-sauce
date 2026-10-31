@@ -44,7 +44,7 @@ case ${1:-} in
     echo "## 列に積んだ PR (queue ラベル)"
     prs=$(gh_ pr list --state open --label queue --json number,title,headRefName,body,author,labels) || { echo "ERR gh pr list に失敗"; prs='[]'; }
     added=0
-    for n in $(echo "$prs" | jq -r '.[].number'); do
+    for n in $(echo "$prs" | jq -r '.[].number' | sort -n); do
       e=$(echo "$prs" | jq -c --argjson n "$n" ".[] | select(.number == \$n) | {task_id: \"pr-\\(.number)\", pr: .number, branch: .headRefName,
         title: \"PR#\\(.number) \\(.title)\", author: .author.login, area: ($AREA), expected_gain: \"mid\",
         restart_risk: any(.labels[]; .name == \"restart\"), batchable: false, targets: []}")

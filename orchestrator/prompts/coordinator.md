@@ -169,7 +169,7 @@ orca worktree rm --worktree path:<worktree の絶対パス> --force --json
 ## 人との並行作業
 人はオーケストレータに従わずに作業してよい。守ってもらう約束は3つで、RUNBOOK の「オーケストレータと並行して作業する人へ」に書いてある。あなたの側の対応は次のとおり
 - **作業の宣言（Issue）**：人は着手前に競技リポジトリに Issue を立て、本文に `範囲: ...` を書く。`team.sh sync` が `$STATE/human-claims.json` に取り込み、「人が作業中」に出す。範囲が重なる仮説は起動しない（Implementer 節）。Analyst も同じファイルを見て、重なる仮説を出さない。あなたの Implementer は `team.sh claim` で Issue にし、結論が出たら `team.sh close` で閉じる
-- **main に入れる道は列だけ**：人は PR に `queue` ラベルを付ける。`team.sh sync` が列に積み（`pr-<番号>`）、`queue.sh rank` は人の PR を先頭に、1件ずつ並べる。人の示唆と同じく最優先で測る
+- **main に入れる道は列だけ**：人は PR に `queue` ラベルを付ける。`team.sh sync` が列に積み（`pr-<番号>`）、`queue.sh rank` は人の PR を先頭に並べ、人の PR 同士はまとめて適用することがある（オーケストレータの項目とは混ぜない）。人の示唆と同じく最優先で測る
 - **本番サーバの書き込みはロックの下**：`bench.sh`・`restart-check.sh`・`with-bench-lock.sh` のロック（`bin/lock.sh`）は本番サーバ上にあり、人も同じロックを取って手作業する。ベンチが長く待たされたら `$ORC/bin/lock.sh status` で持ち主を確かめ、10分を超えていれば `orca worktree set --worktree active --comment` で持ち主に確かめるよう頼む。**`lock.sh break` は自分で実行しない**（人の作業中に deploy すると壊れる）
 
 ## 競技中の知見 `$STATE/docs/insights.md`（あなただけが書く）

@@ -16,12 +16,14 @@
 #       実測より大きければ hint を使い、表に h を付ける
 #   確信度: expected_gain (high 1 / mid 0.6 / low 0.3)。ローカルベンチの予測は使わない (負荷が固定で、順位付けに使えなかった。リハ#2)
 #   AGE_MIN 分 (既定 20) 以上待ったものは優先度に関係なく先頭へ (古い順)
-#   人の PR (pr のある項目。bin/team.sh sync が積む) は、それよりさらに先頭 (PR の番号の小さい順)。batchable にしない (単独で測る)
+#   人の PR (pr のある項目。bin/team.sh sync が積む) は、それよりさらに先頭 (PR の番号の小さい順)
 #   0点の間 (ベースラインから、pass かつ score>0 のベンチがまだ無い): タイトルが [0点解消] のものを先頭に置き、待ち時間の繰り上げはしない (0点の解消を追い越させない)
 # 競合: 呼び出し元のディレクトリが git repo なら、各 branch を origin/<branch> と origin/main で git merge-tree し、競合するものに
 #   conflict=true を付ける (表に ! を付ける)。競合するものは .batch に入れず、先頭が競合なら次のものから組む。fetch は呼び出し側で済ませる
-# まとめて適用 (.batch): 先頭が batchable かつ restart_risk でなければ、同じ条件で area が重ならないものを
-#   順位順に BATCH_MAX 件 (既定 3) まで足す。先頭が batchable でなければ先頭だけ (効果を単独で測る)
+# まとめて適用 (.batch): 束ねてよい項目 = restart_risk でなく、次のどれか: batchable / BATCH_WAIT_MIN 分 (既定 10) 以上待った / 人の PR
+#   (後の2つは reapply (まとめて revert した後の切り分け) のものを除く)。
+#   先頭が束ねてよければ、同じ種類 (人の PR 同士・オーケストレータの項目同士) で束ねてよく、area が重ならない (空の area は重ならない扱い)
+#   ものを順位順に BATCH_MAX 件 (既定 3) まで足す。先頭が束ねてよくなければ先頭だけ (効果を単独で測る)
 set -euo pipefail
 caller=$PWD
 cd "$(dirname "$0")/.."
@@ -57,7 +59,7 @@ case ${1:-} in
         cf=$(echo "$cf" | jq --arg k "$tid" --argjson v "$v" '. + {($k): $v}')
       done < <(jq -r '.[] | select(.reapply == null) | [.task_id, (.branch // "")] | @tsv' "$q")
     fi
-    jq --argjson cf "$cf" --argjson ep "$ep" --argjson qs "$qs" --argjson now "$now" --argjson age "${AGE_MIN:-20}" --argjson max "${BATCH_MAX:-3}" --arg bench "$id" --argjson zero "$zero" '
+    jq --argjson cf "$cf" --argjson ep "$ep" --argjson qs "$qs" --argjson now "$now" --argjson age "${AGE_MIN:-20}" --argjson max "${BATCH_MAX:-3}" --argjson bwait "${BATCH_WAIT_MIN:-10}" --arg bench "$id" --argjson zero "$zero" '
       ($ep | map(.sum) | add // 0) as $et | ($qs | map(.sum) | add // 0) as $qt
       | def wf: if . == null then 0.6 elif . > 0 then 1 else 0.3 end;
         def eshare($t): [$ep[] | select(($t.method // "*") as $m | ($m == "*" or $m == .method) and .uri == $t.uri)]
@@ -75,10 +77,12 @@ case ${1:-} in
         | . + {conflict: $cf[.task_id], degree: ($degree | r2), degree_src: (if $hinted then "hint" else "measured" end), confidence: ($conf | r2), priority: ($degree * $conf | r2), wait_min: $wait, aged: ($wait >= $age and ($zero | not))})
       | if $zero then (map(select((.title // "") | startswith("[0点解消]"))) | sort_by(-.priority)) + (map(select((.title // "") | startswith("[0点解消]") | not)) | sort_by(-.priority))
         else (map(select(.pr != null)) | sort_by(.pr)) + (map(select(.pr == null and .aged)) | sort_by(.ready_at)) + (map(select(.pr == null and (.aged | not))) | sort_by(-.priority)) end
-      | def ok: (.batchable == true) and (.restart_risk != true);
+      | def ok: (.restart_risk != true) and (.batchable == true or (.reapply == null and (.wait_min >= $bwait or .pr != null)));
+        def overlap($xs; $e): ($e.area // "") as $a | $a != "" and any($xs[]; (.area // "") == $a);
         map(select(.conflict != true)) as $mergeable
         | ($mergeable | if length == 0 then [] elif (.[0] | ok) then
-          reduce .[1:][] as $e ([.[0]]; if length < $max and ($e | ok) and ([.[].area] | index($e.area) | not) then . + [$e] else . end)
+          (.[0].pr != null) as $human
+          | reduce .[1:][] as $e ([.[0]]; if length < $max and ($e | ok) and (($e.pr != null) == $human) and (overlap(.; $e) | not) then . + [$e] else . end)
         else [.[0]] end | map(.task_id)) as $batch
       | {bench: $bench, ranked_at: $now, zero: $zero, batch: $batch, conflicts: map(select(.conflict == true) | .task_id), queue: .}' "$q" >"$STATE/queue-rank.json"
     jq -r '"基準ベンチ: \(.bench // "なし")\(if .zero then " (0点の間: [0点解消] を先頭に、待ち時間の繰り上げなし)" else "" end)", "次にまとめて適用: \(.batch | join(", "))",

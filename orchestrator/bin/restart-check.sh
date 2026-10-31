@@ -11,7 +11,9 @@ TIMEOUT=${TIMEOUT:-300}
 # PROBE_URLS が空だと前後の比較が常に一致し、再起動の完了を待たずにベンチが走る (リハ#2)
 [ -n "${PROBE_URLS// /}" ] || { echo "restart-check: env.sh の PROBE_URLS が空。再起動前後で比べる GET URL を書くこと" >&2; exit 2; }
 
-snapshot() { for u in $PROBE_URLS; do ssh -o ConnectTimeout=5 "$APP_HOST" "curl -fsS ${PROBE_CURL_ARGS:-} '$u'" || echo "ERR $u"; done | shasum; }
+# 応答のうち時刻で変わる値 (署名付き URL の exp・sig など) は PROBE_MASK_RE に当てて伏せてから比べる (本選: 画像 URL の exp が60秒刻みで変わり、再起動前後が必ず不一致になった)
+PROBE_MASK_RE=${PROBE_MASK_RE:-'(exp|sig|expires|signature)=[^&"]*'}
+snapshot() { for u in $PROBE_URLS; do ssh -o ConnectTimeout=5 "$APP_HOST" "curl -fsS ${PROBE_CURL_ARGS:-} '$u'" || echo "ERR $u"; done | sed -E "s/$PROBE_MASK_RE/\1=_/g" | shasum; }
 
 # 再起動からベンチまで本番サーバのロックを持つ (再起動の途中に他の人の deploy・手作業が入らないように)。bench.sh には BENCH_LOCK_TOKEN で渡す
 if [ -z "${BENCH_LOCK_TOKEN:-}" ]; then

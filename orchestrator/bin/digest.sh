@@ -10,6 +10,8 @@
 #                           DNS サーバの統計のベンチ前後の差分。EXTRA_COLLECT の dns-<tool>.collect.sh が置いた <host>/dns-<tool>.{pre,post}.json から
 #   <host>/appquery.json  : {sec, pool:{wait_count, wait_sec,...}, routes:[{route, count, avg, queries_avg, db_sum, db_avg,...}], queries:[{query, count, sum, avg, p95, max, errors}]}
 #                           アプリから見たクエリの時間 (RTT・行の転送を含む)。EXTRA_COLLECT の appquery-<tool>.collect.sh が置いた <host>/appquery-<tool>.raw から
+#   <host>/dbpool.json    : {sec, max_open, wait_count, wait_sec, wait_avg_ms, in_use_avg, in_use_max, saturated_ratio, open_max, idle_min, timeline[]}
+#                           アプリの接続プールの増分。EXTRA_COLLECT の dbpool-isureal.collect.sh が post で直接置く (変換なし)
 #   <host>/guard.json     : {bans, ban_failed, ips, by_reason, stats} BAN の常駐のベンチ中のログ。guard-<tool>.collect.sh の <host>/guard-<tool>.raw から
 #   <host>/pgact.json     : {ticks, sec, active_avg, waits[], lock_waits[], top_queries[], tables[], io[]} DB のセッションのサンプリングとテーブル・I/O の統計の差分。
 #                           pgact-<tool>.collect.sh の <host>/pgact-<tool>.raw (と .pre.tsv/.post.tsv) から
@@ -123,6 +125,11 @@ for f in "$dir"/*/cpu.pprof; do [ -s "$f" ] && run profile "$PROFILE_DIGEST" "$f
     echo; jq -r '"## guard \(input_filename | split("/")[-2]) (BAN の常駐のベンチ中のログ)",
       "bans=\(.bans) ips=\(.ips) ban_failed=\(.ban_failed) by_reason=\(.by_reason | to_entries | map("\(.key):\(.value)") | join(","))" +
       (if .stats then " 読んだ行=\(.stats.lines) action_logs=\(.stats.action_logs) failures=\(.stats.failures)" else "" end)' "$f"
+  done
+  for f in "$dir"/*/dbpool.json; do
+    [ -f "$f" ] || continue
+    echo; jq -r '"## dbpool \(input_filename | split("/")[-2]) \(.sec | round)s (アプリの接続プール database/sql の増分。dbpool-isureal.collect.sh)",
+      "max_open=\(.max_open) 接続待ち \(.wait_count) 回 \(.wait_sec)s (平均 \(.wait_avg_ms)ms) in_use avg=\(.in_use_avg) max=\(.in_use_max) 上限に張り付き=\((.saturated_ratio // 0) * 100 | round)% open_max=\(.open_max) idle_min=\(.idle_min)"' "$f"
   done
   for f in "$dir"/*/pgact.json; do
     [ -f "$f" ] || continue

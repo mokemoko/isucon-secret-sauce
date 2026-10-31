@@ -9,6 +9,8 @@
 #   5. マージ待ちの列: git fetch してから bin/queue.sh rank (main と競合するものは ! と「リベースを頼む」行に出る)
 #   6. 承認待ちの仮説: タイトルが [要承認] で始まる未着手のタスク (pending・ready) のうち、ゲートが無いもの (「ゲート未作成」) と、
 #      ゲートが解決済みなのに未着手のもの (「回答済み・未着手」)。ゲートはそのタスクに付けるか、質問文にその task_id を書く
+#   7. 人の PR: このベンチで測った PR に判定を、列で main と競合した PR にリベースの依頼を、bin/team.sh comment で書く
+#   8. main への列を通らない変更: 直前のベンチからの main の first-parent に、Coordinator のマージ・revert 以外があれば出す
 # どれかが失敗しても残りは続ける (失敗は ERR 行に出す)
 set -uo pipefail
 caller=$PWD
@@ -18,8 +20,15 @@ STATE=${STATE:-state}; ORCA=${ORCA:-orca}
 id=${1:?usage: after-bench.sh <bench_id>}
 a=$STATE/analysis
 
+# 判定済みのベンチなら先に知らせる (bench.sh が deploy failed などで台帳に足さずに終わり、最終行の前回のベンチが渡されることがある)
+if [ -s "$STATE/verdicts.jsonl" ] && jq -e --arg id "$id" 'select(.id == $id)' "$STATE/verdicts.jsonl" >/dev/null 2>&1; then
+  echo "WARN $id は判定済み。直前の bench.sh が失敗して台帳に載らなかったなら、この出力は前回のベンチのもの (bench.sh の出力を確かめ、直してからやり直す)"
+  echo
+fi
+
 echo "## judge"
-bin/judge.sh "$id" || echo "ERR judge.sh が失敗"
+jout=$(bin/judge.sh "$id") || jout="ERR judge.sh が失敗"
+echo "$jout"
 
 # 前回の pass ベンチ (このベンチより前で pass かつ score>0 の最後)
 prev=$(jq -rs --arg id "$id" '(map(.id) | index($id)) as $i | if $i == null then empty else .[:$i] | map(select(.pass and .score > 0)) | last | .id // empty end' "$STATE/bench.jsonl" 2>/dev/null)
@@ -78,6 +87,50 @@ else echo "pending=0 restart_check_due=no"; fi
 echo; echo "## マージ待ちの列"
 git -C "$caller" fetch -q origin 2>/dev/null || echo "ERR git fetch に失敗 (競合の確認は古い origin で行う)"
 (cd "$caller" && "$orc/bin/queue.sh" rank) || echo "ERR queue.sh rank が失敗"
+
+# 7. 人の PR (task が pr-<番号>): このベンチの判定と、列で main と競合したことを PR にコメントする (競合は同じ組み合わせで1回だけ)
+echo; echo "## 人の PR"
+row=$(jq -c --arg id "$id" 'select(.id == $id)' "$STATE/bench.jsonl" 2>/dev/null | tail -n1)
+sha=$(echo "$row" | jq -r '.sha // ""' 2>/dev/null)
+v=$(echo "$jout" | sed -n 's/^verdict=\([a-z]*\).*/\1/p')
+case $v in
+  adopt) what="採用 (main に入ったまま)" ;; retry) what="基準を割った1回目。同じ版をもう1回測る" ;;
+  revert) what="2回続けて基準を割ったので revert する。直して push し、queue ラベルを付け直せばもう一度測る" ;;
+  human) what="fail か0点。人間の判断待ち" ;; *) what="判定できなかった" ;;
+esac
+n_pr=0
+for t in $(echo "$row" | jq -r '.task // "" | split(",")[] | select(startswith("pr-"))' 2>/dev/null); do
+  n_pr=$((n_pr + 1))
+  "$orc/bin/team.sh" comment "$t" "ベンチ $id (${sha:0:7}): $what
+\`$jout\`" && echo "判定をコメント: $t $v" || echo "ERR $t にコメントできない"
+done
+for t in $(jq -r '.conflicts[]? | select(startswith("pr-"))' "$STATE/queue-rank.json" 2>/dev/null); do
+  n_pr=$((n_pr + 1))
+  br=$(jq -r --arg t "$t" '.queue[] | select(.task_id == $t) | .branch' "$STATE/queue-rank.json")
+  m=$(git -C "$caller" rev-parse -q --verify origin/main 2>/dev/null)
+  key="$t $(git -C "$caller" rev-parse -q --verify "origin/$br" 2>/dev/null) $m"
+  if grep -qxF "$key" "$STATE/pr-notified" 2>/dev/null; then echo "main と競合 (通知済み): $t"; continue; fi
+  "$orc/bin/team.sh" comment "$t" "main (${m:0:7}) と競合しています。リベースして push してください。列には残っているので、ラベルの付け直しは不要です" \
+    && echo "$key" >>"$STATE/pr-notified" && echo "main と競合を通知: $t (ワーカーにリベースを頼まない)" || echo "ERR $t にコメントできない"
+done
+[ "$n_pr" = 0 ] && echo "なし"
+
+# 8. main への列を通らない変更: 直前のベンチの sha からこのベンチの sha までの first-parent のうち、マージでも revert でもないコミット
+#    (人が main に直接 push したもの) と、GitHub の画面でマージしたもの (Merge pull request #...)。Coordinator のマージは
+#    メッセージが一定しない (Merge <task_id> <title> など) ので、マージコミットか、その cherry-pick (件名が Merge で始まる) を列のものとみなす
+echo; echo "## main への列を通らない変更"
+psha=$(jq -rs --arg id "$id" '(map(.id) | index($id)) as $i | if $i == null or $i == 0 then empty else .[$i - 1].sha // empty end' "$STATE/bench.jsonl" 2>/dev/null)
+if [ -z "$psha" ] || [ -z "$sha" ] || ! git -C "$caller" cat-file -e "$psha^{commit}" 2>/dev/null || ! git -C "$caller" cat-file -e "$sha^{commit}" 2>/dev/null; then
+  echo "不明 (直前のベンチか、その sha が無い)"
+else
+  out=$(git -C "$caller" log --first-parent --format='%s%x09%h %an' "$psha..$sha" \
+    | awk -F'\t' '$1 ~ /^Merge pull request #/ || ($1 !~ /^Merge / && $1 !~ /^Revert /) { print $2 ": " $1 }')
+  if [ -z "$out" ]; then echo "なし"
+  else
+    echo "あり (このベンチの採否はこれを含む。人に、PR に queue ラベルを付けて出すよう頼む)"
+    echo "$out"
+  fi
+fi
 
 echo; echo "## 承認待ちの仮説"
 run=$(cat "$STATE/run_id" 2>/dev/null)

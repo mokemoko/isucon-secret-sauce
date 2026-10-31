@@ -11,9 +11,13 @@ ref=${1:-origin/main}; note=${2:-}
 STATE=${STATE:-state}
 mkdir -p "$STATE"
 
-# ponytail: mkdir ロック (macOS に flock が無い)。異常終了で残ったら state/bench.lock を手で消す
-until mkdir "$STATE/bench.lock" 2>/dev/null; do sleep 2; done
-trap 'rmdir "$STATE/bench.lock"' EXIT
+# 本番サーバのロック (bin/lock.sh。オーケストレータの外で作業する人と共有)。呼び出し元が持っていれば (BENCH_LOCK_TOKEN) そのまま使う
+# 異常終了で残ったら bin/lock.sh status で持ち主を確かめ、bin/lock.sh break で消す
+if [ -z "${BENCH_LOCK_TOKEN:-}" ]; then
+  BENCH_LOCK_TOKEN=$(bin/lock.sh acquire "bench $note")
+  trap 'bin/lock.sh release "$BENCH_LOCK_TOKEN"' EXIT
+  trap 'exit 130' INT TERM
+fi
 
 if [ "${SKIP_DEPLOY:-}" = 1 ]; then
   sha=$(ssh "$APP_HOST" "cd $REPO_DIR && git rev-parse HEAD")

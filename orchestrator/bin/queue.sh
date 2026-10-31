@@ -2,6 +2,7 @@
 # マージ待ちの列 ($STATE/merge-queue.json)。Coordinator が Implementer の完了を積み、ベンチの枠が空いたら rank の先頭から1つ処理する。
 # usage:
 #   bin/queue.sh add '<json>'   {task_id, branch, title, area, expected_gain, restart_risk, batchable, targets:[{method,uri}|{query}], degree_hint} を積む (ready_at は今)
+#                               人の PR は bin/team.sh sync が {task_id: "pr-<番号>", pr, author, ...} で積む
 #   bin/queue.sh requeue <古い task_id> <新しい task_id> [branch]  リベースを別タスクで頼んだときに付け替える (ready_at = 待ち時間は引き継ぐ)
 #   bin/queue.sh rank           優先度順に並べ、$STATE/queue-rank.json に書いて表を出す。.batch が次のベンチでまとめて適用する task_id
 #   bin/queue.sh pop <task_id>  列から外す (マージした・リベース依頼した・取り下げた)
@@ -15,6 +16,7 @@
 #       実測より大きければ hint を使い、表に h を付ける
 #   確信度: expected_gain (high 1 / mid 0.6 / low 0.3)。ローカルベンチの予測は使わない (負荷が固定で、順位付けに使えなかった。リハ#2)
 #   AGE_MIN 分 (既定 20) 以上待ったものは優先度に関係なく先頭へ (古い順)
+#   人の PR (pr のある項目。bin/team.sh sync が積む) は、それよりさらに先頭 (古い順)。batchable にしない (単独で測る)
 #   0点の間 (ベースラインから、pass かつ score>0 のベンチがまだ無い): タイトルが [0点解消] のものを先頭に置き、待ち時間の繰り上げはしない (0点の解消を追い越させない)
 # 競合: 呼び出し元のディレクトリが git repo なら、各 branch を origin/<branch> と origin/main で git merge-tree し、競合するものに
 #   conflict=true を付ける (表に ! を付ける)。競合するものは .batch に入れず、先頭が競合なら次のものから組む。fetch は呼び出し側で済ませる
@@ -72,7 +74,7 @@ case ${1:-} in
         | ((($now - .ready_at) / 60) | floor) as $wait
         | . + {conflict: $cf[.task_id], degree: ($degree | r2), degree_src: (if $hinted then "hint" else "measured" end), confidence: ($conf | r2), priority: ($degree * $conf | r2), wait_min: $wait, aged: ($wait >= $age and ($zero | not))})
       | if $zero then (map(select((.title // "") | startswith("[0点解消]"))) | sort_by(-.priority)) + (map(select((.title // "") | startswith("[0点解消]") | not)) | sort_by(-.priority))
-        else (map(select(.aged)) | sort_by(.ready_at)) + (map(select(.aged | not)) | sort_by(-.priority)) end
+        else (map(select(.pr != null)) | sort_by(.ready_at)) + (map(select(.pr == null and .aged)) | sort_by(.ready_at)) + (map(select(.pr == null and (.aged | not))) | sort_by(-.priority)) end
       | def ok: (.batchable == true) and (.restart_risk != true);
         map(select(.conflict != true)) as $mergeable
         | ($mergeable | if length == 0 then [] elif (.[0] | ok) then
@@ -83,5 +85,5 @@ case ${1:-} in
       (if (.conflicts | length) > 0 then "main と競合 (リベースを頼む): \(.conflicts | join(", "))" else empty end),
       "順位 優先度 (度×確信) 待ち分 task title (! は main と競合)",
       (.queue | to_entries[] | "\(.key + 1) \(.value.priority) (\(.value.degree)\(if .value.degree_src == "hint" then "h" else "" end)×\(.value.confidence)) \(.value.wait_min)\(if .value.aged then "*" else "" end)\(if .value.conflict == true then " !" else "" end) \(.value.task_id) \(.value.title)")' "$STATE/queue-rank.json" ;;
-  *) sed -n '2,6p' "$0" >&2; exit 2 ;;
+  *) sed -n '2,8p' "$0" >&2; exit 2 ;;
 esac

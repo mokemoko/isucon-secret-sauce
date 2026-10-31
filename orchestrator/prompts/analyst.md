@@ -16,6 +16,7 @@
 - `$STATE/docs/`（採点ルール、構成）。特に `scoring.json`（重み）と `insights.md`（これまでに分かったこと・却下済みの仮説）
 - アプリのコード（このリポジトリ）
 - 既存タスクの一覧：`orca orchestration task-list --run <run_id> --brief --json`。重複を出さないため
+- 人が作業中の範囲：`$STATE/human-claims.json`（競技リポジトリの Issue。`area` が範囲）。人はオーケストレータとは別に改善している。**範囲が重なる仮説は出さない**（二重作業とコンフリクトになる）。重なるが大きいと考えるものは、レポートの md に書いて要約に `insights: あり` と付ける
 
 ## 考え方
 - 手法の引き出しは `$ORC/../knowledge/techniques.md`。⚠ の付いた手法（ZTC、反映遅延の利用、耐久性を下げる設定など）は、当日マニュアルの採点・整合性のルールを evidence に引用できる場合だけ出す

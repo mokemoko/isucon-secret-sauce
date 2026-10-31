@@ -85,6 +85,13 @@ out=$($q rank)
 echo '{"id":"z2","pass":true,"score":50}' >>"$t/bench.jsonl"; $q rank >/dev/null
 [ "$(jq -r '.queue[0].task_id' "$t/queue-rank.json")" = old ] || { echo "FAIL zero off"; exit 1; }
 cp "$t/zq.bak" "$t/merge-queue.json"; cp "$t/zb.bak" "$t/bench.jsonl" 2>/dev/null || rm -f "$t/bench.jsonl"
+# 人の PR (pr のある項目) は、待ちすぎのものよりも先頭 (古い順)。まとめて適用しない
+cp "$t/merge-queue.json" "$t/pq.bak"
+old=$(( $(date +%s) - 3600 ))
+printf '%s\n' "[{\"task_id\":\"aged\",\"title\":\"a\",\"area\":\"a\",\"expected_gain\":\"high\",\"batchable\":true,\"ready_at\":$old},{\"task_id\":\"pr-7\",\"pr\":7,\"title\":\"PR#7 x\",\"area\":\"b\",\"expected_gain\":\"mid\",\"batchable\":false,\"ready_at\":$(date +%s)}]" >"$t/merge-queue.json"
+$q rank >/dev/null
+[ "$(jq -c '[[.queue[].task_id], .batch]' "$t/queue-rank.json")" = '[["pr-7","aged"],["pr-7"]]' ] || { echo "FAIL pr first: $(jq -c . "$t/queue-rank.json")"; exit 1; }
+cp "$t/pq.bak" "$t/merge-queue.json"
 # add・pop・requeue は queue.log に (時刻, 操作, 列の長さ) を残す。rank は残さない
 n=$(wc -l <"$t/queue.log" | tr -d ' '); $q pop nonexistent; $q rank >/dev/null
 [ "$(wc -l <"$t/queue.log" | tr -d ' ')" = $((n + 1)) ] && tail -n1 "$t/queue.log" | grep -qE '^[0-9]+	pop	3$' || { echo "FAIL queue.log"; tail -3 "$t/queue.log"; exit 1; }

@@ -9,7 +9,7 @@ ISUCON 本選を、Orca 上の Claude Code チームで自律的にチューニ�
 ## 構成
 | 場所 | 中身 | 誰が読む |
 |---|---|---|
-| `orchestrator/` | 自律チューニングの仕組み。`prompts/`（各エージェントの役割）、`bin/`（bench lane・計測・解析）、`dashboard/`（Go 標準ライブラリのみ）、`rehearsal/`（過去問の AWS 環境）、`test/` | 全員 |
+| `orchestrator/` | 自律チューニングの仕組み。`prompts/`（各エージェントの役割）、`bin/`（bench lane・計測・解析）、`dashboard/`（Go 標準ライブラリのみ）、`gateway/`（ダッシュボードをチームで共有する入口。EC2 + Caddy）、`rehearsal/`（過去問の AWS 環境）、`test/` | 全員 |
 | `orchestrator/RUNBOOK.md` | 当日の人間の手順 | 人間 |
 | `orchestrator/ISSUE.md` | 課題管理だけ。本選前日に空にし、当日は当日の課題だけを書く | 人間・Coordinator |
 | `orchestrator/KNOWLEDGE.md` | orchestrator の運用知見（Orca・プロンプト・計測パイプライン）。ISUCON 以外にも流用できるもの | 改修する人 |
@@ -29,6 +29,6 @@ ISUCON 本選を、Orca 上の Claude Code チームで自律的にチューニ�
 ## 守ること
 - レギュレーション（ISUCON2026、`orchestrator/prompts/common.md` に要約）：アプリの実行経路に外部リソースを入れない、問題・計測情報を公開しない（公開リポジトリ・外部サービスへの投稿・本番サーバの公開ディレクトリへの設置は禁止）、指定外のサーバに触らない
 - 秘密情報（Webhook URL、鍵、トークン）をコミットしない
-- 過去問の AWS 環境を作ったら必ず `orchestrator/rehearsal/down.sh` で消し、残存が無いことを確認する
+- 過去問の AWS 環境を作ったら必ず `orchestrator/rehearsal/down.sh` で消し、残存が無いことを確認する（`gateway/` の入口も同じく `gateway/down.sh`）
 - 過去問のベンチマーカーの実装は読まない（本番ではブラックボックス）
 - エージェントが読む知見（`knowledge/`・`prompts/`）に、過去問の解法を問題名つきで書かない（その問題で再びリハーサルすると答えを渡すことになる）。過去問ごとの評価は `orchestrator/rehearsal/README.md` に書く

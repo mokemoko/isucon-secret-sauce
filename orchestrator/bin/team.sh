@@ -44,13 +44,13 @@ case ${1:-} in
     echo "## 列に積んだ PR (queue ラベル)"
     prs=$(gh_ pr list --state open --label queue --json number,title,headRefName,body,author,labels) || { echo "ERR gh pr list に失敗"; prs='[]'; }
     added=0
-    for n in $(echo "$prs" | jq -r '.[].number'); do
+    for n in $(echo "$prs" | jq -r '.[].number' | sort -n); do
       e=$(echo "$prs" | jq -c --argjson n "$n" ".[] | select(.number == \$n) | {task_id: \"pr-\\(.number)\", pr: .number, branch: .headRefName,
         title: \"PR#\\(.number) \\(.title)\", author: .author.login, area: ($AREA), expected_gain: \"mid\",
         restart_risk: any(.labels[]; .name == \"restart\"), batchable: false, targets: []}")
       jq -e --arg t "pr-$n" 'any(.[]; .task_id == $t)' "$q" >/dev/null || bin/queue.sh add "$e" >/dev/null
       gh_ pr edit "$n" --remove-label queue --add-label queued >/dev/null || echo "ERR PR#$n のラベルを替えられない (次の sync でもう一度積もうとする)"
-      gh_ pr comment "$n" --body "オーケストレータのマージ待ちの列に積みました。人の PR は列の先頭に並び、1件ずつベンチで測って採否を決めます。結果はここにコメントします。main と競合したらコメントするので、リベースして push してください (ラベルの付け直しは不要)。" >/dev/null
+      gh_ pr comment "$n" --body "オーケストレータのマージ待ちの列に積みました。人の PR は列の先頭に並び、ベンチで測って採否を決めます (他の人の PR と同じベンチでまとめて測ることがあります)。結果はここにコメントします。main と競合したらコメントするので、リベースして push してください (ラベルの付け直しは不要)。" >/dev/null
       echo "$e" | jq -r '"\(.task_id) \(.title) (@\(.author)) branch=\(.branch)\(if .area != "" then " 範囲: \(.area)" else "" end)"'
       added=$((added + 1))
     done

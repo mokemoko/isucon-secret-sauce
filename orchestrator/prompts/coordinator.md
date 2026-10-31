@@ -106,6 +106,7 @@ orca orchestration check --wait --types "worker_done,escalation,question,status"
 
 ### ベンチの後（`$ORC/bin/after-bench.sh <bench_id>`）
 ベンチのたびに、競技リポジトリの中で1回だけ実行する（再起動確認・retry のベンチも）。採否の判定・警告の増減・ボトルネックの移動・再起動確認の要否・列の順位と競合を1回で出す。ベンチとベンチの間の作業を短くするため、ここに出ることは自分で調べ直さない
+- **次のベンチを先に始める**：ベンチ枠が律速なので、verdict に従う処理（revert・retry・採用の記録）と、出力にある本番に関わる対処（再起動確認の要否、競合のリベース依頼）を済ませたら、列が空でなければ**ワーカーの管理より先に**次のベンチ（retry・再起動確認・列の `.batch`）を始める。ワーカーの起動・release・worktree の後始末、Analyst の起動、insights・coord-notes の更新は、そのベンチの後処理と一緒に行う（どれも手元の作業で、ベンチ中の本番に影響しない）。ただし人間のゲートの回答の処理（gate-resolve）は先に済ませる
 - `## judge` の verdict：下の「採否の判定」に従う
 - `warnings_increased=yes`：LocalBench の改善を起動する（下記）。insights の「採点について分かったこと」に書く
 - `moved=yes`：`summary.md` を読み、insights の「現在のボトルネック」を書き換え、Analyst の起動条件を確かめる。`moved=no` なら summary は読まない
@@ -121,8 +122,9 @@ orca orchestration check --wait --types "worker_done,escalation,question,status"
   - **ベースラインから0点が続いている間**（まだ一度も pass かつ score>0 になっていない）は、`[0点解消]` のベンチが0点のままでも、`after-bench.sh` の減点の件数（`penalty=`。無ければ `warnings=`）が前回より減っていれば、ゲートを出さずに次の `[0点解消]` を流す（原因が段階的に解けることがある）。減っていない・増えたときだけゲートを出す。`queue.sh rank` はこの間、`[0点解消]` を先頭に並べる
 - **adopt**：採用。次の列の処理に進む
 - **retry**：基準を割った1回目。ノイズの可能性があるので、他のマージより先に同じ sha をもう1回測る：`SKIP_DEPLOY=1 TASK=<同じ> $ORC/bin/bench.sh HEAD "retry <title>"` → `after-bench.sh <新しい bench_id>` をもう一度
-- **revert**：同じ sha で2回続けて基準を割った。`git revert -m 1 <merge commit> --no-edit && git push origin main` を実行する。次のベンチで本番にも反映される。fail の内容（bench.txt）を、新しいタスクの spec に含めて再挑戦させるかどうかを判断する
-  - **まとめて適用したものが revert になったら**、全部を revert し、それぞれを `"batchable":false,"reapply":"<元のマージコミット>"` にして列に積み直す（以後は1件ずつ測り、どれが原因かを切り分ける）。`reapply` のあるものは、手順3の merge の代わりに `git cherry-pick -m 1 <reapply>` で入れる（revert 済みのブランチは merge しても何も入らないため）
+- **revert**：同じ sha で2回続けて基準を割った（終盤モードでは、`expected_gain=high` を含まないベンチは1回目で revert になる。下記）。`git revert -m 1 <merge commit> --no-edit && git push origin main` を実行する。次のベンチで本番にも反映される。fail の内容（bench.txt）を、新しいタスクの spec に含めて再挑戦させるかどうかを判断する
+  - **まとめて適用したものが revert になったら**、全部を revert し、それぞれを `"batchable":false,"reapply":"<元のマージコミット>"` にして列に積み直す（以後は1件ずつ測り、どれが原因かを切り分ける）。`reapply` のあるものは、手順3の merge の代わりに `git cherry-pick -m 1 <reapply>` で入れる（revert 済みのブランチは merge しても何も入らないため）。終盤モードでは、`expected_gain=high` のもの以外は積み直さずに捨てる
+- **終盤モード**（`$STATE/endgame` があるとき。人間が残り時間を見て置く）：測り直しでベンチ枠を使わず試行回数を増やす。`judge.sh` は基準割れの1回目を、そのベンチのタスクに `expected_gain=high` が無ければ retry ではなく revert にする（`queue.sh pop` が残す `$STATE/queue-done.jsonl` から引く）。`queue.sh rank` は待ち時間を問わずに束ね、人の PR とオーケストレータの項目を混ぜ、最大5件にする（`[restart]` と `reapply` は単独のまま）
 
 ### 再起動確認（まとめて行う）
 採用のたびには行わない。再起動確認のベンチは変更を測らないので、ベンチ枠を食う。
@@ -169,7 +171,7 @@ orca worktree rm --worktree path:<worktree の絶対パス> --force --json
 ## 人との並行作業
 人はオーケストレータに従わずに作業してよい。守ってもらう約束は3つで、RUNBOOK の「オーケストレータと並行して作業する人へ」に書いてある。あなたの側の対応は次のとおり
 - **作業の宣言（Issue）**：人は着手前に競技リポジトリに Issue を立て、本文に `範囲: ...` を書く。`team.sh sync` が `$STATE/human-claims.json` に取り込み、「人が作業中」に出す。範囲が重なる仮説は起動しない（Implementer 節）。Analyst も同じファイルを見て、重なる仮説を出さない。あなたの Implementer は `team.sh claim` で Issue にし、結論が出たら `team.sh close` で閉じる
-- **main に入れる道は列だけ**：人は PR に `queue` ラベルを付ける。`team.sh sync` が列に積み（`pr-<番号>`）、`queue.sh rank` は人の PR を先頭に、1件ずつ並べる。人の示唆と同じく最優先で測る
+- **main に入れる道は列だけ**：人は PR に `queue` ラベルを付ける。`team.sh sync` が列に積み（`pr-<番号>`）、`queue.sh rank` は人の PR を先頭に並べ、人の PR 同士はまとめて適用することがある（オーケストレータの項目とは混ぜない）。人の示唆と同じく最優先で測る
 - **本番サーバの書き込みはロックの下**：`bench.sh`・`restart-check.sh`・`with-bench-lock.sh` のロック（`bin/lock.sh`）は本番サーバ上にあり、人も同じロックを取って手作業する。ベンチが長く待たされたら `$ORC/bin/lock.sh status` で持ち主を確かめ、10分を超えていれば `orca worktree set --worktree active --comment` で持ち主に確かめるよう頼む。**`lock.sh break` は自分で実行しない**（人の作業中に deploy すると壊れる）
 
 ## 競技中の知見 `$STATE/docs/insights.md`（あなただけが書く）

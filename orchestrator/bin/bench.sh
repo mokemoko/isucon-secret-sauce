@@ -57,18 +57,30 @@ if [ "${RESOURCE_SAMPLING:-1}" = 1 ]; then
     ssh "$h" "SAMPLER_ID=$id timeout 1800 bash -s" <bin/sample-resources.sh >"$dir/$h/resources.raw" 2>/dev/null & sampler_pids="$sampler_pids $!"
   done
 fi
-pprof_pids=
-if [ -n "$PPROF_URL" ]; then
+pprof_pids=; start_pid=
+pprof_start() {
   for h in ${PPROF_HOSTS:-$APP_HOST}; do
     mkdir -p "$dir/$h"
     ssh "$h" "curl -s '$PPROF_URL'" >"$dir/$h/cpu.pprof" & pprof_pids="$pprof_pids $!"
   done
+}
+if [ -n "$PPROF_URL" ] && [ -n "${BENCH_START_LOG:-}" ]; then
+  # 負荷の開始が BENCH_CMD の開始とずれる (ポータルの列で待つ) ときは、APP_HOST の BENCH_START_LOG (truncate 済みのアクセスログ) が書かれ始めてから pprof を取る
+  ( ssh "$APP_HOST" "timeout ${BENCH_START_TIMEOUT:-1200} sh -c 'until sudo test -s $BENCH_START_LOG; do sleep 1; done'" \
+      && date +%s >"$dir/load-started" && pprof_start && wait ) 2>>"$dir/collect.err" & start_pid=$!
+elif [ -n "$PPROF_URL" ]; then
+  pprof_start
 fi
 if $BENCH_CMD >"$dir/bench.txt" 2>"$dir/bench.err"; then
   result=$(tail -n1 "$dir/bench.txt")
   echo "$result" | jq -e 'has("pass") and has("score")' >/dev/null || result='{"pass":false,"score":0,"error":"unparsable bench output"}'
 else
   result='{"pass":false,"score":0,"error":"bench command failed"}'
+fi
+if [ -n "$start_pid" ]; then
+  # 負荷が来ないまま BENCH_CMD が終わった (失敗・打ち切り) なら、開始の待ちを止める
+  [ -e "$dir/load-started" ] || { pkill -P "$start_pid" 2>/dev/null; kill "$start_pid" 2>/dev/null; }
+  wait "$start_pid" 2>/dev/null || true
 fi
 for p in $pprof_pids; do wait "$p" || true; done
 collect post; extra post

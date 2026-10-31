@@ -11,7 +11,8 @@
 ## 10:00 開始直後
 1. ポータルで AWS 環境を起動する（エージェントに AWS 権限は渡さない）
 2. 当日マニュアルの本文を `orchestrator/state/docs/manual-raw.md` に保存する
-3. サーバ IP を `orchestrator/state/docs/hosts.txt` に書き、`~/isucon/ssh_config` に `Host isu1` などを書く
+3. サーバ IP を `orchestrator/state/docs/hosts.txt` に書き、`~/isucon/ssh_config` に `Host isu1` などを書く。`ForwardAgent no` も書く（`~/.ssh/config` の `Host *` で転送していると、サーバからの GitHub の認証が個人鍵と deploy key で揺れ、fetch が時々失敗する。個人鍵を競技サーバに渡さないためでもある）
+   - ベンチがポータルからしか実行できないとき：Orca のブラウザでポータルにログインしたタブを開いたままにし（閉じない・ログアウトしない）、`env.sh` に `BENCH_CMD="bin/portal-bench.sh"`・`PORTAL_PAGE=<そのタブの browserPageId。orca tab list --worktree all --json>`を書く（`PORTAL_TARGET_ID` は空でよい。ポータルの Enqueue ボタンと同じくサーバ一覧の先頭を使う）。`bin/portal-bench.sh targets` が一覧を返すことを確かめる
 4. GitHub に空の **private** リポジトリを作り、手元に clone する。Orca に `repo add` する
    - 他のメンバーを collaborator に招待する（Issue・PR を使うため）
    - `orchestrator/env.sh` を `env.example.sh` から作り `HOSTS` だけ書いてから、`orchestrator/bin/deploy-key.sh <owner/repo>` を実行する（env.sh に `GH_REPO` も書かれる）。各サーバの鍵を書き込み可の deploy key として登録する（書き込み権限を渡す操作なので、エージェントには実行させない。auto モードで止まる）
@@ -55,7 +56,7 @@
    git push origin <ブランチ>
    gh pr create -R <owner/repo> --label queue --body "範囲: <...>"     # OS の再起動でしか確かめられない変更は --label restart も
    ```
-   オーケストレータが列の先頭に積み、1件ずつ本番でベンチを回して採否を決め、結果を PR にコメントする（採用なら main に入り、PR はマージ済みになる。基準を割れば revert される）。main と競合したらコメントが付くので、リベースして push する（ラベルはそのまま）。main に直接入れると、次のベンチでオーケストレータの変更の結果として採否が決まってしまう（`after-bench.sh` が検知して知らせる）
+   オーケストレータが列の先頭に積み、本番でベンチを回して採否を決め（他の人の PR と同じベンチでまとめて測ることがある）、結果を PR にコメントする（採用なら main に入り、PR はマージ済みになる。基準を割れば revert される）。main と競合したらコメントが付くので、リベースして push する（ラベルはそのまま）。main に直接入れると、次のベンチでオーケストレータの変更の結果として採否が決まってしまう（`after-bench.sh` が検知して知らせる）
 3. **本番サーバに書き込むときはロックを取る**（設定を試す、サービスを再起動する、ポータルからベンチを回す）。ロックの間はオーケストレータのベンチが止まるので短くする。ssh でのログ・`top` などの読み取りは自由
    ```
    LOCK_HOST=isu1 LOCK_NOTE="<名前> <何をするか>" <isucon-secret-sauce>/orchestrator/bin/with-bench-lock.sh <コマンド>

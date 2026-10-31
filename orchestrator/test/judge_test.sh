@@ -21,4 +21,12 @@ row b10 s8 false 0
 [ "$(j b10)" = verdict=human ] || { echo "FAIL human"; exit 1; }
 "$root/bin/judge.sh" b10 >/dev/null   # 判定し直しは置き換え
 [ "$(wc -l <"$t/verdicts.jsonl" | tr -d ' ')" = 5 ] || { echo "FAIL ledger"; exit 1; }
+# 終盤 ($STATE/endgame): 基準割れの1回目は、high のタスクだけ retry、ほかは revert
+touch "$t/endgame"
+printf '%s\n' '{"task_id":"tH","expected_gain":"high"}' '{"task_id":"tL","expected_gain":"low"}' >"$t/queue-done.jsonl"
+printf '{"id":"b11","sha":"s9","pass":true,"score":100,"task":"tL"}\n' >>"$t/bench.jsonl"
+[ "$(j b11)" = verdict=revert ] || { echo "FAIL endgame low: $("$root/bin/judge.sh" b11)"; exit 1; }
+printf '{"id":"b12","sha":"s10","pass":true,"score":100,"task":"tL,tH"}\n' >>"$t/bench.jsonl"
+[ "$(j b12)" = verdict=retry ] || { echo "FAIL endgame high: $("$root/bin/judge.sh" b12)"; exit 1; }
+rm "$t/endgame"
 echo ok

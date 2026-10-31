@@ -91,6 +91,18 @@ old=$(( $(date +%s) - 3600 ))
 printf '%s\n' "[{\"task_id\":\"aged\",\"title\":\"a\",\"area\":\"a\",\"expected_gain\":\"high\",\"batchable\":true,\"ready_at\":$old},{\"task_id\":\"pr-7\",\"pr\":7,\"title\":\"PR#7 x\",\"area\":\"b\",\"expected_gain\":\"mid\",\"batchable\":false,\"ready_at\":$(date +%s)}]" >"$t/merge-queue.json"
 $q rank >/dev/null
 [ "$(jq -c '[[.queue[].task_id], .batch]' "$t/queue-rank.json")" = '[["pr-7","aged"],["pr-7"]]' ] || { echo "FAIL pr first: $(jq -c . "$t/queue-rank.json")"; exit 1; }
+# 人の PR 同士は束ねる (restart は除く、空の area は重ならない扱い)。batchable=false でも 10 分以上待ったものは束ねる
+now=$(date +%s); w=$((now - 11 * 60))
+printf '%s\n' "[{\"task_id\":\"pr-3\",\"pr\":3,\"title\":\"PR#3\",\"area\":\"\",\"ready_at\":$now},{\"task_id\":\"pr-4\",\"pr\":4,\"title\":\"PR#4\",\"area\":\"\",\"ready_at\":$now},{\"task_id\":\"pr-5\",\"pr\":5,\"title\":\"PR#5\",\"area\":\"\",\"restart_risk\":true,\"ready_at\":$now},{\"task_id\":\"w1\",\"title\":\"w1\",\"area\":\"x\",\"batchable\":false,\"ready_at\":$w}]" >"$t/merge-queue.json"
+$q rank >/dev/null
+[ "$(jq -c .batch "$t/queue-rank.json")" = '["pr-3","pr-4"]' ] || { echo "FAIL pr batch: $(jq -c .batch "$t/queue-rank.json")"; exit 1; }
+printf '%s\n' "[{\"task_id\":\"w1\",\"title\":\"w1\",\"area\":\"x\",\"expected_gain\":\"high\",\"batchable\":false,\"ready_at\":$w},{\"task_id\":\"w2\",\"title\":\"w2\",\"area\":\"y\",\"batchable\":false,\"ready_at\":$w},{\"task_id\":\"n1\",\"title\":\"n1\",\"area\":\"z\",\"batchable\":false,\"ready_at\":$now},{\"task_id\":\"w3\",\"title\":\"w3\",\"area\":\"x\",\"batchable\":false,\"ready_at\":$w}]" >"$t/merge-queue.json"
+$q rank >/dev/null
+[ "$(jq -c .batch "$t/queue-rank.json")" = '["w1","w2"]' ] || { echo "FAIL waited batch: $(jq -c .batch "$t/queue-rank.json")"; exit 1; }
+# reapply (まとめて revert した後の切り分け) のものは、待っても束ねない
+jq 'map(if .task_id == "w2" then .reapply = "abc" else . end)' "$t/merge-queue.json" >"$t/m.tmp" && mv "$t/m.tmp" "$t/merge-queue.json"
+$q rank >/dev/null
+[ "$(jq -c .batch "$t/queue-rank.json")" = '["w1"]' ] || { echo "FAIL reapply not batched: $(jq -c .batch "$t/queue-rank.json")"; exit 1; }
 cp "$t/pq.bak" "$t/merge-queue.json"
 # add・pop・requeue は queue.log に (時刻, 操作, 列の長さ) を残す。rank は残さない
 n=$(wc -l <"$t/queue.log" | tr -d ' '); $q pop nonexistent; $q rank >/dev/null

@@ -56,7 +56,7 @@ orchestrator の実装（`orchestrator/bin/digest/` のアダプタ）との対�
 | リセット | ログを truncate | `SELECT pg_stat_statements_reset();` |
 
 - 推奨：普段は `pg_stat_statements`、実 SQL や時系列が要るときだけログ型を1回有効にする
-- アダプタを足すなら `query-pgss.collect.sh`（pre でリセット、post で `sudo -u postgres psql -At -F $'\t' -c "SELECT query, calls, total_exec_time, mean_exec_time, max_exec_time, stddev_exec_time, rows, shared_blks_hit, shared_blks_read FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 30"`）と `query-pgss.sh`（時間はミリ秒。`p95` は無いので `max` か `mean + 2*stddev` を入れて、その旨を summary に書く。`rows_examined_avg` は空）
+- アダプタは `bin/digest/query-pgss.collect.sh`（pre でリセット、post で上位30種を TSV で取る）と `query-pgss.sh`（ミリ秒を秒に直す。`p95` は無いので `mean + 2*stddev`、`rows_examined_avg` は null。`hit_ratio`・`blks_read` を足す）。env.sh は `QUERY_DIGEST=pgss`、`DB_HOSTS`、必要なら `PSQL_CMD`（既定 `sudo -u postgres psql -X`）
 - PG 13 未満は列名が `total_time` / `mean_time` など（`_exec_` が無い）
 
 ### アプリに組み込まれた DB（SQLite など）

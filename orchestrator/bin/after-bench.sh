@@ -95,7 +95,7 @@ sha=$(echo "$row" | jq -r '.sha // ""' 2>/dev/null)
 v=$(echo "$jout" | sed -n 's/^verdict=\([a-z]*\).*/\1/p')
 case $v in
   adopt) what="採用 (main に入ったまま)" ;; retry) what="基準を割った1回目。同じ版をもう1回測る" ;;
-  revert) what="2回続けて基準を割ったので revert する。直して push し、queue ラベルを付け直せばもう一度測る" ;;
+  revert) what="2回続けて (終盤は high 以外1回目で) 基準を割ったので revert する。直して push し、queue ラベルを付け直せばもう一度測る" ;;
   human) what="fail か0点。人間の判断待ち" ;; *) what="判定できなかった" ;;
 esac
 n_pr=0

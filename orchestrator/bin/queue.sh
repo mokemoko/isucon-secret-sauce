@@ -24,6 +24,9 @@
 #   (後の2つは reapply (まとめて revert した後の切り分け) のものを除く)。
 #   先頭が束ねてよければ、同じ種類 (人の PR 同士・オーケストレータの項目同士) で束ねてよく、area が重ならない (空の area は重ならない扱い)
 #   ものを順位順に BATCH_MAX 件 (既定 3) まで足す。先頭が束ねてよくなければ先頭だけ (効果を単独で測る)
+#   終盤 ($STATE/endgame があるとき): 待ち時間を問わず束ねてよく (BATCH_WAIT_MIN 既定 0)、人の PR とオーケストレータの項目も混ぜ、
+#   BATCH_MAX 既定 5。restart_risk と reapply は従来どおり単独
+# pop した項目は $STATE/queue-done.jsonl に残す (judge.sh が終盤に expected_gain を引く)
 set -euo pipefail
 caller=$PWD
 cd "$(dirname "$0")/.."
@@ -40,8 +43,11 @@ case ${1:-} in
   requeue)
     jq --arg o "$2" --arg n "$3" --arg b "${4:-}" 'map(if .task_id == $o then .task_id = $n | (if $b != "" then .branch = $b else . end) else . end)' "$q" >"$q.tmp" && mv "$q.tmp" "$q" && qlog "$1" ;;
   pop)
+    jq -c --arg id "$2" --argjson now "$now" '.[] | select(.task_id == $id) | . + {popped_at: $now}' "$q" >>"$STATE/queue-done.jsonl" || true
     jq --arg id "$2" 'map(select(.task_id != $id))' "$q" >"$q.tmp" && mv "$q.tmp" "$q" && qlog "$1" ;;
   rank)
+    eg=false; [ -f "$STATE/endgame" ] && eg=true
+    if $eg; then dmax=5; dwait=0; else dmax=3; dwait=10; fi
     # 最新の pass かつ score>0 のベンチ
     id=$( { jq -r 'select(.pass and .score > 0) | .id' "$STATE/bench.jsonl" 2>/dev/null || true; } | tail -n1)
     d=$STATE/analysis/$id
@@ -59,7 +65,7 @@ case ${1:-} in
         cf=$(echo "$cf" | jq --arg k "$tid" --argjson v "$v" '. + {($k): $v}')
       done < <(jq -r '.[] | select(.reapply == null) | [.task_id, (.branch // "")] | @tsv' "$q")
     fi
-    jq --argjson cf "$cf" --argjson ep "$ep" --argjson qs "$qs" --argjson now "$now" --argjson age "${AGE_MIN:-20}" --argjson max "${BATCH_MAX:-3}" --argjson bwait "${BATCH_WAIT_MIN:-10}" --arg bench "$id" --argjson zero "$zero" '
+    jq --argjson cf "$cf" --argjson ep "$ep" --argjson qs "$qs" --argjson now "$now" --argjson age "${AGE_MIN:-20}" --argjson max "${BATCH_MAX:-$dmax}" --argjson bwait "${BATCH_WAIT_MIN:-$dwait}" --argjson eg "$eg" --arg bench "$id" --argjson zero "$zero" '
       ($ep | map(.sum) | add // 0) as $et | ($qs | map(.sum) | add // 0) as $qt
       | def wf: if . == null then 0.6 elif . > 0 then 1 else 0.3 end;
         def eshare($t): [$ep[] | select(($t.method // "*") as $m | ($m == "*" or $m == .method) and .uri == $t.uri)]
@@ -82,10 +88,10 @@ case ${1:-} in
         map(select(.conflict != true)) as $mergeable
         | ($mergeable | if length == 0 then [] elif (.[0] | ok) then
           (.[0].pr != null) as $human
-          | reduce .[1:][] as $e ([.[0]]; if length < $max and ($e | ok) and (($e.pr != null) == $human) and (overlap(.; $e) | not) then . + [$e] else . end)
+          | reduce .[1:][] as $e ([.[0]]; if length < $max and ($e | ok) and ($eg or (($e.pr != null) == $human)) and (overlap(.; $e) | not) then . + [$e] else . end)
         else [.[0]] end | map(.task_id)) as $batch
       | {bench: $bench, ranked_at: $now, zero: $zero, batch: $batch, conflicts: map(select(.conflict == true) | .task_id), queue: .}' "$q" >"$STATE/queue-rank.json"
-    jq -r '"基準ベンチ: \(.bench // "なし")\(if .zero then " (0点の間: [0点解消] を先頭に、待ち時間の繰り上げなし)" else "" end)", "次にまとめて適用: \(.batch | join(", "))",
+    jq -r --argjson eg "$eg" '"基準ベンチ: \(.bench // "なし")\(if $eg then " [終盤: まとめて適用を広げ、基準割れは high 以外 revert]" else "" end)\(if .zero then " (0点の間: [0点解消] を先頭に、待ち時間の繰り上げなし)" else "" end)", "次にまとめて適用: \(.batch | join(", "))",
       (if (.conflicts | length) > 0 then "main と競合 (リベースを頼む): \(.conflicts | join(", "))" else empty end),
       "順位 優先度 (度×確信) 待ち分 task title (! は main と競合)",
       (.queue | to_entries[] | "\(.key + 1) \(.value.priority) (\(.value.degree)\(if .value.degree_src == "hint" then "h" else "" end)×\(.value.confidence)) \(.value.wait_min)\(if .value.aged then "*" else "" end)\(if .value.conflict == true then " !" else "" end) \(.value.task_id) \(.value.title)")' "$STATE/queue-rank.json" ;;

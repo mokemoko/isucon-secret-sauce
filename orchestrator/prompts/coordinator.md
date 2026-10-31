@@ -122,8 +122,9 @@ orca orchestration check --wait --types "worker_done,escalation,question,status"
   - **ベースラインから0点が続いている間**（まだ一度も pass かつ score>0 になっていない）は、`[0点解消]` のベンチが0点のままでも、`after-bench.sh` の減点の件数（`penalty=`。無ければ `warnings=`）が前回より減っていれば、ゲートを出さずに次の `[0点解消]` を流す（原因が段階的に解けることがある）。減っていない・増えたときだけゲートを出す。`queue.sh rank` はこの間、`[0点解消]` を先頭に並べる
 - **adopt**：採用。次の列の処理に進む
 - **retry**：基準を割った1回目。ノイズの可能性があるので、他のマージより先に同じ sha をもう1回測る：`SKIP_DEPLOY=1 TASK=<同じ> $ORC/bin/bench.sh HEAD "retry <title>"` → `after-bench.sh <新しい bench_id>` をもう一度
-- **revert**：同じ sha で2回続けて基準を割った。`git revert -m 1 <merge commit> --no-edit && git push origin main` を実行する。次のベンチで本番にも反映される。fail の内容（bench.txt）を、新しいタスクの spec に含めて再挑戦させるかどうかを判断する
-  - **まとめて適用したものが revert になったら**、全部を revert し、それぞれを `"batchable":false,"reapply":"<元のマージコミット>"` にして列に積み直す（以後は1件ずつ測り、どれが原因かを切り分ける）。`reapply` のあるものは、手順3の merge の代わりに `git cherry-pick -m 1 <reapply>` で入れる（revert 済みのブランチは merge しても何も入らないため）
+- **revert**：同じ sha で2回続けて基準を割った（終盤モードでは、`expected_gain=high` を含まないベンチは1回目で revert になる。下記）。`git revert -m 1 <merge commit> --no-edit && git push origin main` を実行する。次のベンチで本番にも反映される。fail の内容（bench.txt）を、新しいタスクの spec に含めて再挑戦させるかどうかを判断する
+  - **まとめて適用したものが revert になったら**、全部を revert し、それぞれを `"batchable":false,"reapply":"<元のマージコミット>"` にして列に積み直す（以後は1件ずつ測り、どれが原因かを切り分ける）。`reapply` のあるものは、手順3の merge の代わりに `git cherry-pick -m 1 <reapply>` で入れる（revert 済みのブランチは merge しても何も入らないため）。終盤モードでは、`expected_gain=high` のもの以外は積み直さずに捨てる
+- **終盤モード**（`$STATE/endgame` があるとき。人間が残り時間を見て置く）：測り直しでベンチ枠を使わず試行回数を増やす。`judge.sh` は基準割れの1回目を、そのベンチのタスクに `expected_gain=high` が無ければ retry ではなく revert にする（`queue.sh pop` が残す `$STATE/queue-done.jsonl` から引く）。`queue.sh rank` は待ち時間を問わずに束ね、人の PR とオーケストレータの項目を混ぜ、最大5件にする（`[restart]` と `reapply` は単独のまま）
 
 ### 再起動確認（まとめて行う）
 採用のたびには行わない。再起動確認のベンチは変更を測らないので、ベンチ枠を食う。

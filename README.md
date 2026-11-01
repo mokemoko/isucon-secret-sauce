@@ -9,6 +9,8 @@ ISUCON の本選を、[Orca](https://github.com/stablyai/orca) 上の Claude Cod
 - 計測は、ツールに依存しない共通スキーマとツールごとのアダプタで扱う（`orchestrator/bin/digest.sh`、`bin/digest/`）。alp、pt-query-digest、pg_stat_statements、pprof などを、AI が読める大きさの要約にまとめる
 - 進み具合と承認待ちは、Go の標準ライブラリだけで書いたダッシュボードに出す（`orchestrator/dashboard/`）。チームでの共有には EC2 + Caddy の入口を使う（`orchestrator/gateway/`）
 
+![ダッシュボード（ISUCON2026 本選の終了時点）](orchestrator/dashboard/screenshot.png)
+
 ## 構成
 | 場所 | 中身 |
 |---|---|

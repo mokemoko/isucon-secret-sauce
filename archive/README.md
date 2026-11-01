@@ -7,7 +7,7 @@ orchestrator 以前（2021〜2022年ごろ）の手作業向けの道具。**エ
 |---|---|
 | `ansible/`、`script/install_tools.sh` | サーバ初期設定は orchestrator の setup タスク。ツールの版が古い（Go 1.16、Ubuntu 18.04 向けの pt） |
 | `script/Makefile` | ログの回収・解析は `orchestrator/bin/bench.sh`、デプロイは競技リポジトリの `make deploy` |
-| `script/out.sh`、`config/notify_slack.toml` | 解析結果を本番サーバの公開ディレクトリに置き Slack に送る。**レギュレーション違反のおそれ**（公開ディレクトリへの設置・計測情報の外部送信）。Webhook URL は伏せたが git 履歴には残っている |
+| `script/out.sh`、`config/notify_slack.toml` | 解析結果を本番サーバの公開ディレクトリに置き Slack に送る。**レギュレーション違反のおそれ**（公開ディレクトリへの設置・計測情報の外部送信）。Webhook URL は伏せてある |
 | `script/accesslog-parser` | ユーザー（cookie）ごとのリクエスト時系列の可視化。発想は `knowledge/techniques.md` に記録。LTSV 前提 |
 | `config/mysql_slow.conf` | slow log の logrotate。bench.sh がベンチ毎に truncate する。slow log 自体も既定では使わない |
 | `snippet/profiler.md` | Cloud Profiler（外部の GCP にプロファイルを送る）。pprof を使う |
